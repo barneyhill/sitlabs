@@ -58,7 +58,7 @@ class GenomeBrowser {
     async loadFindings() {
         try {
             console.log('Starting to load findings...');
-            const response = await fetch('../parsed_findings_w_chrpos.jsonl');
+            const response = await fetch('./parsed_findings_w_chrpos.jsonl');
             console.log('Fetched response:', response.status);
             const text = await response.text();
             console.log('Current chromosome:', this.state.data.currentChromosome);
