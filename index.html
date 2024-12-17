@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg'><text y='24' font-size='24'>🔶</text></svg>">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SITLabs</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
+        
+        :root {
+            --bg-color: rgb(245, 246, 242);
+            --text-color: #111;
+            --secondary-color: #888;
+            --border-color: #ddd;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            line-height: 1.5;
+            padding: 2rem;
+        }
+        
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 25px;
+        }
+
+        .tab-titles {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 0;
+            border-bottom: 1px dashed #111;
+            margin-bottom: 20px;
+            justify-content: space-between;
+        }
+
+        .tab-left {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .location {
+            color: var(--secondary-color);
+        }
+
+        .list {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .list li {
+            display: flex;
+            align-items: flex-start;
+        }
+
+        .item-icon {
+            width: 23px;
+            height: 20px;
+            flex-shrink: 0;
+        }
+
+        .item-title {
+            flex-grow: 1;
+        }
+
+        .item-title h2 {
+            font-size: 15px;
+            font-weight: 500;
+            letter-spacing: -0.01em;
+        }
+
+        .item-title h3 {
+            font-size: 13px;
+            color: var(--secondary-color);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-top: 2px;
+        }
+
+        .description {
+            margin-bottom: 30px;
+            color: var(--primary-color);
+        }
+
+        .year-group {
+            font-size: 13px;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+            margin-left: 23px;
+            margin-top: 10px;
+        }
+
+        li + li.year-group {
+            margin-top: 20px;
+        }
+
+        .section {
+            margin-bottom: 30px;
+        }
+        
+        @media (max-width: 768px) {
+            body {
+                padding: 1rem;
+            }
+            
+            .container {
+                padding: 15px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="tab-titles">
+            <div class="tab-left">
+                <span class="tab-title">🔶</span>
+                <span class="tab-title">Scientific Interface & Tooling Lab</span>
+            </div>
+            <span class="location">Oxford, England</span>
+        </div>
+        
+        <p class="description">
+            Twenty years ago the development of the World Wide Web enabled the creation of tools such as Google Scholar and the UCSC Genome Browser. We believe these straightforward tools and interfaces have played a significant, and undervalued, role in accelerating global scientific progress.
+        </p>
+
+        <p class="description">
+            Now with the rapid development of AI we are building a new generation of interfaces and tooling to aid the comprehension of scientific information. We are initially focused on biology research where progress is increasing bottlenecked by the availability of intelligence required to analyse the exponentially growing volume of published data.
+        </p>
+
+        <div class="section">
+            <div class="tab-titles">
+                <div class="tab-left">
+                    <span class="tab-title">🟥</span>
+                    <span class="tab-title">Projects</span>
+                </div>
+            </div>
+            
+            <ul class="list">
+                <li>
+                    <span class="item-icon">
+                        <span class="node-research"></span>
+                    </span>
+                    <div class="item-title">
+                        <h2>Genomie</h2>
+                        <h3>A genome browser you can talk to.</h3>
+                    </div>
+                </li>
+                <li>
+                    <span class="item-icon">
+                        <span class="node-initiative"></span>
+                    </span>
+                    <div class="item-title">
+                        <h2>Litloci</h2>
+                        <h3>Mapping scientific findings onto the genome.</h3>
+                    </div>
+                </li>
+            </ul>
+        </div>
+
+        <div class="section">
+            <div class="tab-titles">
+                <div class="tab-left">
+                    <span class="tab-title">🔵</span>
+                    <span class="tab-title">People</span>
+                </div>
+            </div>
+            
+            <ul class="list">
+                <li>
+                    <span class="item-icon">
+                        <span class="node-research"></span>
+                    </span>
+                    <div class="item-title">
+                        <a href="https://barneyhill.com"><h2>Barney Hill</h2></a>
+                        <h3>Principal Investigator</h3>
+                    </div>
+                </li>
+            </ul>
+        </div>
+    </div>
+</body>
+</html>
