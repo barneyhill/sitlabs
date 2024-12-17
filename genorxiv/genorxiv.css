@@ -1,0 +1,363 @@
+/* Color variables */
+:root {
+    --color-black: #121212;
+    --color-gray-dark: #1a1a1a;
+    --color-gray-light: #8e8e8e;
+    --color-white: #eeeeee;
+    --color-overlay: rgba(0, 0, 0, 0.7);
+    --color-shadow: rgba(0, 0, 0, 0.3);
+}
+
+/* Base styles */
+body { 
+    font-family: Arial, sans-serif; 
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    overflow: hidden;
+    background-color: var(--color-gray-dark);
+    color: var(--color-white);
+}
+
+.title {
+    position: absolute;
+    left: 30px;
+    margin: 0;
+    font-size: 50px;
+    font-weight: bold;
+    font-family: 'Libre Baskerville', serif;
+    letter-spacing: 0.025em;
+}
+
+.about-button {
+    position: absolute;
+    right: 40px;
+    padding: 10px 15px;
+    font-size: 16px;
+    border: 2px solid var(--color-gray-light);
+    border-radius: 4px;
+    cursor: pointer;
+    background: none;
+    color: var(--color-white);
+}
+
+/* Common styles */
+.search-button {
+    background: none;
+    color: var(--color-white);
+    border: 2px solid var(--color-gray-light);
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.3s;
+    /* Add these properties to make it square */
+    width: 30px;  /* Match the height which is determined by padding + border */
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+
+.search-button:hover,
+.about-button:hover {
+    background: var(--color-gray-light);
+    color: var(--color-black);
+}
+
+/* Layout */
+.header {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    padding: clamp(5px, 2vw, 20px);
+    flex-shrink: 0;
+    box-sizing: border-box;
+    height: 100px;
+    position: relative;
+}
+
+.main-container {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+    position: relative;
+    min-height: 0;
+}
+
+/* Search components */
+.search-container {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 16px;
+}
+
+.search-text {
+    color: var(--color-white);
+    white-space: nowrap;
+    font-size: 16px;
+}
+
+.search-input {
+    border: 2px solid var(--color-gray-light);
+    border-radius: 4px;
+    padding: 10px 15px;
+    font-size: 16px;
+    background-color: var(--color-gray-dark);
+    color: var(--color-white);
+    width: 150px;
+}
+
+.search-input:focus { 
+    outline: none; 
+    border-color: var(--color-white);
+}
+
+.search-input::placeholder { 
+    color: var(--color-gray-light);
+}
+
+.search-button:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
+.search-icon {
+    width: 16px;
+    height: 16px;
+}
+
+/* Gene container */
+#gene-container { 
+    flex: 1;
+    position: relative;
+    height: 100%;
+    border-top: 1px solid var(--color-gray-light);
+}
+
+
+#gene-container canvas {
+    width: 100% !important;
+    height: 100% !important;
+    position: absolute;
+    top: 0;
+    left: 0;
+}
+
+canvas {
+    cursor: grab;
+}
+
+canvas:active {
+    cursor: grabbing;
+}
+
+/* About modal */
+.about-modal {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background-color: var(--color-overlay);
+    z-index: 1000;
+}
+
+.about-modal.visible {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.about-content {
+    position: relative;
+    background-color: var(--color-gray-dark);
+    padding: 2rem;
+    border-radius: 8px;
+    max-width: 600px;
+    margin: 20px;
+    box-shadow: 0 4px 6px var(--color-shadow);
+    color: var(--color-white);
+}
+
+.close-button {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 50%;
+    transition: background-color 0.2s;
+}
+
+.close-button:hover {
+    background-color: var(--color-black);
+}
+
+.close-button svg {
+    width: 20px;
+    height: 20px;
+    stroke: var(--color-gray-light);
+}
+
+.about-content h2 {
+    text-align: center;
+    margin-bottom: 1.5rem;
+    font-size: 1.8rem;
+    font-weight: bold;
+}
+
+.about-content p {
+    margin-bottom: 1rem;
+    line-height: 1.6;
+    color: var(--color-white);
+}
+
+.about-content .controls {
+    margin-top: 1.5rem;
+    text-align: center;
+    font-size: 0.9rem;
+    color: var(--color-gray-light);
+}
+
+.controls p {
+    margin: 0.5rem 0;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+#loading-icon {
+    animation: spin 1s linear infinite;
+}
+
+/* Article panel */
+.article-panel {
+    width: 400px;
+    background-color: var(--color-gray-dark);
+    overflow-y: auto;
+    display: none;
+    flex-shrink: 0;
+    border-left: 1px solid var(--color-gray-light);
+    border-top: 1px solid var(--color-gray-light);
+    height: 100%;
+}
+
+.article-panel.visible {
+    display: block;
+}
+
+.article-panel::-webkit-scrollbar {
+    width: 8px;
+}
+
+.article-panel::-webkit-scrollbar-track {
+    background: var(--color-gray-dark);
+    border-left: 1px solid var(--color-gray-light);
+}
+
+.article-panel::-webkit-scrollbar-thumb {
+    background-color: var(--color-gray-light);
+}
+
+.marker-section {
+    margin: 0;
+}
+
+.marker-section h3 {
+    padding: 10px 15px;
+    margin: 0;
+    color: var(--color-white);
+    font-size: 1.1em;
+    border-bottom: 1px solid var(--color-gray-light);
+}
+
+.marker-group {
+    padding: 15px;
+    transition: background-color 0.2s;
+    /* Remove the side borders and only keep bottom border */
+    border: none;
+    border-bottom: 1px solid var(--color-gray-light);
+}
+
+.marker-group:not(:last-child) {
+    border-bottom: 1px solid var(--color-gray-light);
+}
+
+.marker-header {
+    color: var(--color-white);
+    font-weight: bold;
+    margin-bottom: 10px;
+}
+
+.marker-findings {
+    list-style-type: none;
+    padding: 0;
+    margin: 0;
+}
+
+.paper-title {
+    color: var(--color-white);
+    text-decoration: underline;
+    cursor: pointer;
+    margin-bottom: 5px;
+}
+
+.finding-text {
+    color: var(--color-gray-light);
+    margin-bottom: 15px;
+    line-height: 1.4;
+}
+
+.marker-findings li {
+    margin: 0;
+    padding: 0;
+}
+
+/* Mobile styles */
+@media (hover: none) {
+    .header {
+        flex-direction: column;
+        height: auto;
+        padding: 10px;
+        gap: 10px;
+    }
+
+    .title {
+        position: static;
+        font-size: 40px;
+        margin-bottom: 10px;
+    }
+
+    .search-container {
+        width: 100%;
+        flex-wrap: nowrap;
+        justify-content: space-between;
+        gap: 8px;
+        padding: 0;
+    }
+
+    .search-text {
+        font-size: 20px;
+    }
+
+    .search-input,
+    .search-button {
+        padding: 8px;
+        font-size: 20px;
+    }
+
+    .about-button {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        padding: 6px 12px;
+        font-size: 20px;
+        margin: 0;
+    }
+}

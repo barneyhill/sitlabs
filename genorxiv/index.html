@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<head>
+    <meta charset="UTF-8">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'><circle cx='20' cy='20' r='19' fill='white' stroke='black' stroke-width='2'/><text x='20' y='27' text-anchor='middle' font-family='Arial' font-size='24' font-weight='bold'>G</text></svg>">
+    <title>Genorxiv</title>
+    <link href="https://fonts.googleapis.com/css2?family=Libre+Baskerville:wght@700&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pixi.js/7.4.2/pixi.min.js"></script>
+    <link rel="stylesheet" href="genorxiv.css">
+</head>
+<body>
+<div class="header">
+    <h1 class="title">Genorxiv</h1>
+    <div class="search-container">
+        <input 
+            type="text" 
+            class="search-input" 
+            id="position" 
+            value="GLP1R"
+            placeholder="chrN:pos or gene">
+        <button class="search-button" onclick="browser.searchPosition()" id="search-button">
+            <svg class="search-icon" id="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="11" cy="11" r="8"/>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+            <svg class="search-icon" id="loading-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display: none">
+                <path d="M12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2Z" stroke-opacity="0.25"/>
+                <path d="M12 2C6.47715 2 2 6.47715 2 12C2 14.7255 3.09032 17.1962 4.85857 19" stroke-opacity="1"/>
+            </svg>
+        </button>            
+    </div>
+    <button class="about-button" onclick="browser.toggleAbout()">About</button>
+</div>
+<div class="about-modal">
+    <div class="about-content">
+        <button class="close-button" onclick="browser.toggleAbout()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+        </button>
+        <h2>About Genorxiv</h2>
+        <p>
+            Genorxiv is a simple genome browser for visualizing genes and their positions.
+        </p>
+        <p>
+           Made by <a href="https://www.barneyhill.com">Barney.</a>
+        </p>
+        <div class="controls">
+            <p>Use the mouse wheel to zoom</p>
+            <p>Click and drag to pan</p>
+            <p>Click on genes to jump to them</p>
+        </div>
+    </div>
+</div>
+<div class="main-container">
+    <div id="gene-container"></div>
+    <div class="article-panel">
+        <div class="marker-list"></div>
+    </div>
+</div>
+<script src="genorxiv.js"></script>
+</body>
+</html>
