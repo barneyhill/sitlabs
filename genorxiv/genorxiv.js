@@ -55,9 +55,7 @@ class GenomeBrowser {
     // Load findings from JSONL file
     // Inside loadFindings method, add these console logs:
     async loadFindings() {
-        try {
-            console.log('Starting to load findings for chromosome:', this.state.data.currentChromosome);
-            
+        try {            
             // Construct the filename based on current chromosome
             const filename = `rxiv_findings/rxiv_findings_${this.state.data.currentChromosome}.jsonl`;
             const response = await fetch(filename);
@@ -619,7 +617,6 @@ class GenomeBrowser {
 
         // Add markers first, before genes
         if (this.state.data.markers && this.state.data.markers.length > 0) {
-            console.log('Adding markers:', this.state.data.markers.length);
             this.state.data.markers.forEach(marker => {
                 const markerDisplay = this.createMarkerPin(marker, start, end);
                 if (markerDisplay) {

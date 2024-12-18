@@ -26,9 +26,8 @@ body {
     left: 30px;
     margin: 0;
     font-size: 50px;
-    font-weight: bold;
     font-family: 'Libre Baskerville', serif;
-    letter-spacing: 0.025em;
+    font-weight: normal;
 }
 
 .about-button {
@@ -51,8 +50,7 @@ body {
     border-radius: 4px;
     cursor: pointer;
     transition: all 0.3s;
-    /* Add these properties to make it square */
-    width: 30px;  /* Match the height which is determined by padding + border */
+    width: 30px;
     height: 30px;
     display: flex;
     align-items: center;
@@ -280,7 +278,6 @@ canvas:active {
 .marker-group {
     padding: 15px;
     transition: background-color 0.2s;
-    /* Remove the side borders and only keep bottom border */
     border: none;
     border-bottom: 1px solid var(--color-gray-light);
 }
@@ -317,6 +314,19 @@ canvas:active {
 .marker-findings li {
     margin: 0;
     padding: 0;
+}
+
+a {
+    color: #66b3ff;
+    text-decoration: none;
+}
+
+a:hover {
+    text-decoration: underline;
+}
+
+a:visited {
+    color: #cc99ff;
 }
 
 /* Mobile styles */
