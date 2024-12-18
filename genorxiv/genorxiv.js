@@ -28,10 +28,9 @@ class GenomeBrowser {
         const container = document.getElementById('gene-container');
         const isMobile = /Android|iPhone|iPad|iPod|BlackBerry|IEMobile/i.test(navigator.userAgent);
         
-        // Changed background color to match dark theme
         this.state.ui.app = new PIXI.Application({
             resizeTo: container,
-            backgroundColor: 0x1a1a1a, // Changed to dark background
+            backgroundColor: 0x1a1a1a,
             resolution: window.devicePixelRatio || 1,
             antialias: !isMobile,
             autoDensity: true,
@@ -53,7 +52,6 @@ class GenomeBrowser {
     }
 
     // Load findings from JSONL file
-    // Inside loadFindings method, add these console logs:
     async loadFindings() {
         try {            
             // Construct the filename based on current chromosome
@@ -128,22 +126,17 @@ class GenomeBrowser {
         const star = new PIXI.Graphics();
         star.lineStyle(4, 0xFFFFFF);  // White lines, thickness of 4
         
-        // Draw 3 intersecting lines
         const radius = 10;
         
-        // Vertical line
         star.moveTo(0, -radius);
         star.lineTo(0, radius);
         
-        // Line at 60 degrees
         star.moveTo(radius * Math.cos(Math.PI/6), -radius * Math.sin(Math.PI/6));
         star.lineTo(-radius * Math.cos(Math.PI/6), radius * Math.sin(Math.PI/6));
         
-        // Line at -60 degrees
         star.moveTo(-radius * Math.cos(Math.PI/6), -radius * Math.sin(Math.PI/6));
         star.lineTo(radius * Math.cos(Math.PI/6), radius * Math.sin(Math.PI/6));
     
-        // Add invisible hit area
         star.hitArea = new PIXI.Circle(0, 0, radius);
     
         star.pivot.set(0, 0);
@@ -157,12 +150,10 @@ class GenomeBrowser {
     
         star.eventMode = 'static';
         star.cursor = 'pointer';
-        star.interactive = true;  // Add this new line
-        
-        // Store the pin in the array (keep this line)
+        star.interactive = true;
+
         this.state.ui.markerPins.push(group);
         
-        // Replace the old event handlers with the new ones
         star.on('pointerover', () => {
             if (!star.selected) {
                 star.scale.set(1.25);
@@ -183,20 +174,20 @@ class GenomeBrowser {
                 const otherStar = pin.children[0];
                 otherStar.selected = false;
                 otherStar.scale.set(1);
-                otherStar.tint = 0x808080; // Set to light grey
+                otherStar.tint = 0x808080;
             });
             
             // Make selected star larger and white
             star.selected = true;
             star.scale.set(1.5);
-            star.tint = 0xFFFFFF; // Reset to white
+            star.tint = 0xFFFFFF;
             container.parent.addChild(container);
                     
             const markerList = document.querySelector('.marker-list');
             markerList.innerHTML = '';  
             markerList.scrollTop = 0;      
     
-            // First, create "Selected Locus" section
+            // Create "Selected Locus" section
             const selectedSection = document.createElement('div');
             selectedSection.className = 'marker-section';
             const selectedHeader = document.createElement('h3');
@@ -501,13 +492,12 @@ class GenomeBrowser {
         const dx = point.clientX - this.state.viewport.dragStart.x;
         
         this.state.ui.geneContainer.position.x += dx;
-        this.state.ui.markerContainer.position.x += dx; // Move markers too
+        this.state.ui.markerContainer.position.x += dx;
         
         this.state.viewport.dragStart.x = point.clientX;
         this.updateRuler();
     }
 
-    // Update the onWheel method to zoom markers with genes
     onWheel(event) {
         event.preventDefault();
         const centerX = event.clientX - this.state.ui.app.view.getBoundingClientRect().left;
@@ -600,7 +590,7 @@ class GenomeBrowser {
         const text = new PIXI.Text(gene.gene_name, {
             fontFamily: 'Arial',
             fontSize: 15,
-            fill: 0xFFFFFF // Changed to white text
+            fill: 0xFFFFFF
         });
         text.y = -20;
         geneDisplay.addChild(text);
