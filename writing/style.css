@@ -1,0 +1,117 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
+
+:root {
+    --bg-color: rgb(245, 246, 242);
+    --text-color: #111;
+    --secondary-color: #888;
+    --border-color: #ddd;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Inter', sans-serif;
+    background-color: var(--bg-color);
+    color: var(--text-color);
+    line-height: 1.5;
+    padding: 2rem;
+    max-width: 800px;
+    margin: 0 auto;
+}
+
+/* Override Pandoc's default container */
+body > * {
+    padding: 0 25px;
+}
+
+/* Headings */
+h1 {
+    font-size: 16px;
+    font-weight: 500;
+    letter-spacing: -0.01em;
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding-bottom: 10px;
+    border-bottom: 1px dashed #111;
+}
+
+h2 {
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    margin-top: 30px;
+    margin-bottom: 15px;
+}
+
+h3 {
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    margin-top: 25px;
+    margin-bottom: 10px;
+}
+
+/* Paragraphs */
+p {
+    margin-bottom: 15px;
+}
+
+/* Code blocks */
+pre {
+    background-color: #ffffff;
+    padding: 15px;
+    border-radius: 4px;
+    overflow-x: auto;
+    margin: 15px 0;
+}
+
+/* Override Pandoc's source code styling */
+.sourceCode {
+    margin: 15px 0;
+    background-color: #ffffff;
+    border-radius: 4px;
+}
+
+.sourceCode pre {
+    margin: 0;
+    padding: 15px;
+}
+
+code {
+    font-family: monospace;
+    font-size: 14px;
+}
+
+/* Inline code */
+p code {
+    background-color: #ffffff;
+    padding: 2px 4px;
+    border-radius: 3px;
+}
+
+/* Links */
+a {
+    color: inherit;
+    text-decoration: underline;
+}
+
+a:hover {
+    text-decoration: none;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    body {
+        padding: 1rem;
+    }
+    
+    body > * {
+        padding: 0 15px;
+    }
+}

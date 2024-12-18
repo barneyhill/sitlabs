@@ -171,24 +171,26 @@ class GenomeBrowser {
     
         star.eventMode = 'static';
         star.cursor = 'pointer';
+        star.interactive = true;  // Add this new line
         
-        // Add hover behavior
-        star.onpointerover = () => {
+        // Store the pin in the array (keep this line)
+        this.state.ui.markerPins.push(group);
+        
+        // Replace the old event handlers with the new ones
+        star.on('pointerover', () => {
             if (!star.selected) {
                 star.scale.set(1.25);
             }
-        };
+        });
         
-        star.onpointerout = () => {
+        star.on('pointerout', () => {
             if (!star.selected) {
                 star.scale.set(1);
             }
-        };
+        });
         
-        this.state.ui.markerPins.push(group);
-        
-        star.onclick = (event) => {
-                event.stopPropagation();
+        star.on('pointerdown', (event) => {
+            event.stopPropagation();
             
             // Reset all stars
             this.state.ui.markerPins.forEach(pin => {
@@ -331,7 +333,7 @@ class GenomeBrowser {
     
             markerList.appendChild(nearbySection);
             document.querySelector('.article-panel').classList.add('visible');
-        };
+        });
         
         return container;
     }
@@ -424,10 +426,10 @@ class GenomeBrowser {
                     );
                     
                     if (markerPin) {
-                        // Simulate click on the star
                         const star = markerPin.children[0].children[0];
-                        star.onclick(new Event('click'));
+                        star.emit('pointerdown', new PIXI.FederatedEvent(star));
                     }
+                
                 }
             }        
 
@@ -441,6 +443,19 @@ class GenomeBrowser {
         }
     }
 
+    handleZoom(zoomFactor, centerX) {
+        const worldPos = (centerX - this.state.ui.geneContainer.position.x) / this.state.ui.geneContainer.scale.x;
+        
+        // Apply zoom to both containers
+        [this.state.ui.geneContainer, this.state.ui.markerContainer].forEach(container => {
+            container.scale.x *= zoomFactor;
+            container.position.x = centerX - worldPos * container.scale.x;
+        });
+        
+        this.updateTextScales();
+        this.updateRuler();
+    }
+    
     setupEventListeners() {
         const view = this.state.ui.app.view;
         
@@ -457,24 +472,15 @@ class GenomeBrowser {
         view.addEventListener('touchend', this.onDragEnd);
         view.addEventListener('wheel', this.onWheel);
 
-        view.addEventListener('gesturestart', (e) => {
-            e.preventDefault();
-        });
+        view.addEventListener('gesturestart', e => e.preventDefault());
 
-        view.addEventListener('gesturechange', (e) => {
+        view.addEventListener('gesturechange', e => {
             e.preventDefault();
-            const midX = e.clientX - view.getBoundingClientRect().left;
-            const worldPos = (midX - this.state.ui.geneContainer.position.x) / this.state.ui.geneContainer.scale.x;
-            
             const dampening = 0.2;
-            const zoomFactor = e.scale;
-            
-            this.state.ui.geneContainer.scale.x *= Math.pow(zoomFactor, dampening);
-            this.state.ui.geneContainer.position.x = midX - worldPos * this.state.ui.geneContainer.scale.x;
-            
-            this.updateTextScales();
-            this.updateRuler();
+            const centerX = e.clientX - view.getBoundingClientRect().left;
+            this.handleZoom(Math.pow(e.scale, dampening), centerX);
         });
+    
 
         const resizeObserver = new ResizeObserver(entries => {
             for (const entry of entries) {
@@ -517,19 +523,9 @@ class GenomeBrowser {
     // Update the onWheel method to zoom markers with genes
     onWheel(event) {
         event.preventDefault();
-        const mouseX = event.clientX - this.state.ui.app.view.getBoundingClientRect().left;
+        const centerX = event.clientX - this.state.ui.app.view.getBoundingClientRect().left;
         const zoomFactor = event.deltaY > 0 ? 1.1 : 0.9;
-        
-        const worldPos = (mouseX - this.state.ui.geneContainer.position.x) / this.state.ui.geneContainer.scale.x;
-        
-        this.state.ui.geneContainer.scale.x *= zoomFactor;
-        this.state.ui.markerContainer.scale.x *= zoomFactor; // Zoom markers too
-        
-        this.state.ui.geneContainer.position.x = mouseX - worldPos * this.state.ui.geneContainer.scale.x;
-        this.state.ui.markerContainer.position.x = this.state.ui.geneContainer.position.x; // Keep markers aligned
-        
-        this.updateTextScales();
-        this.updateRuler();
+        this.handleZoom(zoomFactor, centerX);
     }
 
     updateTextScales() {

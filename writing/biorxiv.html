@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="" xml:lang="">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <title>biorxiv</title>
+  <style>
+    code{white-space: pre-wrap;}
+    span.smallcaps{font-variant: small-caps;}
+    span.underline{text-decoration: underline;}
+    div.column{display: inline-block; vertical-align: top; width: 50%;}
+    div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+    ul.task-list{list-style: none;}
+    pre > code.sourceCode { white-space: pre; position: relative; }
+    pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+    pre > code.sourceCode > span:empty { height: 1.2em; }
+    code.sourceCode > span { color: inherit; text-decoration: inherit; }
+    div.sourceCode { margin: 1em 0; }
+    pre.sourceCode { margin: 0; }
+    @media screen {
+    div.sourceCode { overflow: auto; }
+    }
+    @media print {
+    pre > code.sourceCode { white-space: pre-wrap; }
+    pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+    }
+    pre.numberSource code
+      { counter-reset: source-line 0; }
+    pre.numberSource code > span
+      { position: relative; left: -4em; counter-increment: source-line; }
+    pre.numberSource code > span > a:first-child::before
+      { content: counter(source-line);
+        position: relative; left: -1em; text-align: right; vertical-align: baseline;
+        border: none; display: inline-block;
+        -webkit-touch-callout: none; -webkit-user-select: none;
+        -khtml-user-select: none; -moz-user-select: none;
+        -ms-user-select: none; user-select: none;
+        padding: 0 4px; width: 4em;
+        color: #aaaaaa;
+      }
+    pre.numberSource { margin-left: 3em; border-left: 1px solid #aaaaaa;  padding-left: 4px; }
+    div.sourceCode
+      {   }
+    @media screen {
+    pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+    }
+    code span.al { color: #ff0000; font-weight: bold; } /* Alert */
+    code span.an { color: #60a0b0; font-weight: bold; font-style: italic; } /* Annotation */
+    code span.at { color: #7d9029; } /* Attribute */
+    code span.bn { color: #40a070; } /* BaseN */
+    code span.bu { } /* BuiltIn */
+    code span.cf { color: #007020; font-weight: bold; } /* ControlFlow */
+    code span.ch { color: #4070a0; } /* Char */
+    code span.cn { color: #880000; } /* Constant */
+    code span.co { color: #60a0b0; font-style: italic; } /* Comment */
+    code span.cv { color: #60a0b0; font-weight: bold; font-style: italic; } /* CommentVar */
+    code span.do { color: #ba2121; font-style: italic; } /* Documentation */
+    code span.dt { color: #902000; } /* DataType */
+    code span.dv { color: #40a070; } /* DecVal */
+    code span.er { color: #ff0000; font-weight: bold; } /* Error */
+    code span.ex { } /* Extension */
+    code span.fl { color: #40a070; } /* Float */
+    code span.fu { color: #06287e; } /* Function */
+    code span.im { } /* Import */
+    code span.in { color: #60a0b0; font-weight: bold; font-style: italic; } /* Information */
+    code span.kw { color: #007020; font-weight: bold; } /* Keyword */
+    code span.op { color: #666666; } /* Operator */
+    code span.ot { color: #007020; } /* Other */
+    code span.pp { color: #bc7a00; } /* Preprocessor */
+    code span.sc { color: #4070a0; } /* SpecialChar */
+    code span.ss { color: #bb6688; } /* SpecialString */
+    code span.st { color: #4070a0; } /* String */
+    code span.va { color: #19177c; } /* Variable */
+    code span.vs { color: #4070a0; } /* VerbatimString */
+    code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warning */
+  </style>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<h1 id="scientific-interface-tooling-lab">🔶 <a href="../">Scientific Interface &amp; Tooling Lab</a></h1>
+<h2 id="how-to-download-biorxiv-on-a-budget">How to download bioRxiv on a budget</h2>
+<p>bioRxiv hosts a S3 bucket containing all deposited preprint articles. This bucket is “requester pays” which unfortunately means you’ll be paying $0.09 per GB downloaded. As the entire bucket is ~6TB the total cost to download would be $500+. To avoid this we will first download the files to a machine hosted in EC2 (no egress) and then filter down the articles to plain-text before downloading. By keeping only the plain-text data we can massively reduce the size of the data to download affordably.</p>
+<p>To download the data I used <code>i7ie.3xlarge</code> ($1.56/hour) which offers sufficient network and storage bandwidth to download at 2.5GB/s with 7.5TB of disk space.</p>
+<h3 id="downloading-biorxiv-to-ec2">Downloading bioRxiv to EC2</h3>
+<p>To efficiently download the thousands of compressed article files in parallel I used <code>s5cmd</code>:</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true"></a><span class="ex">s5cmd</span> --request-payer requester cp --sp <span class="st">&#39;s3://biorxiv-src-monthly/Current_Content/*&#39;</span> .</span></code></pre></div>
+<h3 id="processing-meca-files">Processing MECA Files</h3>
+<p>Now we want to extract plaintext from the thousands of compressed (.meca) files each corresponding to a different article. Thankfully the bioRxiv team have already preprocessed the PDF’s into XML files containing plaintext! Now all we need to do is extract the XML file and delete the remaining contents</p>
+<p>First we can create a function to process each MECA archive file:</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true"></a><span class="fu">process_meca()</span> <span class="kw">{</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true"></a>    <span class="va">meca=</span><span class="st">&quot;</span><span class="va">$1</span><span class="st">&quot;</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true"></a>    <span class="va">id=$(</span><span class="fu">basename</span> <span class="st">&quot;</span><span class="va">$meca</span><span class="st">&quot;</span> .meca<span class="va">)</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true"></a>    <span class="fu">mkdir</span> -p <span class="st">&quot;xml/</span><span class="va">$id</span><span class="st">&quot;</span> <span class="op">2&gt;</span>/dev/null</span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true"></a>    <span class="fu">unzip</span> -qq -j <span class="st">&quot;</span><span class="va">$meca</span><span class="st">&quot;</span> <span class="st">&quot;content/*.xml&quot;</span> -d <span class="st">&quot;xml/</span><span class="va">$id</span><span class="st">&quot;</span> <span class="op">&lt;</span> /dev/null <span class="op">2&gt;</span>/dev/null</span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true"></a><span class="kw">}</span></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true"></a><span class="bu">export</span> -f <span class="va">process_meca</span></span></code></pre></div>
+<p>And then we can break up the processing to operate on one subdirectory at a time to avoid hitting system limits:</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true"></a><span class="kw">for</span> <span class="fu">dir</span> in */<span class="kw">;</span> <span class="kw">do</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true"></a>    <span class="fu">find</span> <span class="st">&quot;</span><span class="va">$dir</span><span class="st">&quot;</span> -name <span class="st">&quot;*.meca&quot;</span> -print0 <span class="kw">|</span> <span class="ex">parallel</span> -0 --progress --jobs <span class="va">$(($(</span><span class="ex">nproc</span><span class="va">)</span> * 2<span class="va">))</span> process_meca</span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true"></a><span class="kw">done</span></span></code></pre></div>
+<p>Finally let’s flatten our directory structure so we have all XML files in one top directory.</p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true"></a><span class="kw">for</span> <span class="ex">d</span> in xml/*/<span class="kw">;</span> <span class="kw">do</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true"></a>    <span class="va">prefix=$(</span><span class="fu">basename</span> <span class="st">&quot;</span><span class="va">$d</span><span class="st">&quot;</span><span class="va">)</span></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true"></a>    <span class="kw">for</span> <span class="ex">f</span> in <span class="st">&quot;</span><span class="va">$d</span><span class="st">&quot;</span>*.xml<span class="kw">;</span> <span class="kw">do</span></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true"></a>        <span class="kw">if</span><span class="bu"> [</span> <span class="ot">-f</span> <span class="st">&quot;</span><span class="va">$f</span><span class="st">&quot;</span><span class="bu"> ]</span>; <span class="kw">then</span></span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true"></a>            <span class="fu">mv</span> <span class="st">&quot;</span><span class="va">$f</span><span class="st">&quot;</span> <span class="st">&quot;xml/</span><span class="va">$prefix</span><span class="st">-</span><span class="va">$(</span><span class="fu">basename</span> <span class="st">&quot;</span><span class="va">$f</span><span class="st">&quot;</span><span class="va">)</span><span class="st">&quot;</span></span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true"></a>        <span class="kw">fi</span></span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true"></a>    <span class="kw">done</span></span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true"></a>    <span class="fu">rmdir</span> <span class="st">&quot;</span><span class="va">$d</span><span class="st">&quot;</span></span>
+<span id="cb4-9"><a href="#cb4-9" aria-hidden="true"></a><span class="kw">done</span></span></code></pre></div>
+<h3 id="recompression">Recompression</h3>
+<p>To reduce the download costs we can compress the directory of XML’s ready to download to our local machine with scp.</p>
+<div class="sourceCode" id="cb5"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true"></a><span class="fu">tar</span> cf - xml/ <span class="kw">|</span> <span class="ex">zstd</span> -T0 <span class="op">&gt;</span> biorxiv_text.tar.zst</span></code></pre></div>
+<p>This final file <code>biorxiv_text.tar.zst</code> is only 7GB which costs only $0.63 to download. Conveniently this entire process can be repeated for medrxiv - just change the s3 endpoint: “s3://biorxiv-src-monthly” -&gt; “s3://medrxiv-src-monthly”.</p>
+<p>If you don’t want to go through all of this yourself <a href="https://drive.google.com/drive/folders/1yV9Zw6vNfyiVP68I5VxYUtVRlJkfzaB1?usp=sharing">I’ve uploaded the plain-text content of both biorxiv+medrxiv up to Dec 2024</a></p>
+</body>
+</html>
