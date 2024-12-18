@@ -193,7 +193,8 @@ class GenomeBrowser {
             container.parent.addChild(container);
                     
             const markerList = document.querySelector('.marker-list');
-            markerList.innerHTML = '';        
+            markerList.innerHTML = '';  
+            markerList.scrollTop = 0;      
     
             // First, create "Selected Locus" section
             const selectedSection = document.createElement('div');
