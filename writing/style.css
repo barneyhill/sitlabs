@@ -104,14 +104,3 @@ a {
 a:hover {
     text-decoration: none;
 }
-
-/* Responsive adjustments */
-@media (max-width: 768px) {
-    body {
-        padding: 1rem;
-    }
-    
-    body > * {
-        padding: 0 15px;
-    }
-}
