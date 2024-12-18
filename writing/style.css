@@ -28,6 +28,10 @@ body > * {
     padding: 0 25px;
 }
 
+header {
+    visibility: hidden;
+}
+
 /* Headings */
 h1 {
     font-size: 16px;
