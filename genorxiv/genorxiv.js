@@ -45,7 +45,6 @@ class GenomeBrowser {
         
         this.state.ui.ruler.y = 60;
         
-        // Change the order: Add ruler first, then genes and markers
         this.state.ui.app.stage.addChild(this.state.ui.ruler);
         this.state.ui.app.stage.addChild(this.state.ui.geneContainer);
         this.state.ui.app.stage.addChild(this.state.ui.markerContainer);
@@ -57,26 +56,29 @@ class GenomeBrowser {
     // Inside loadFindings method, add these console logs:
     async loadFindings() {
         try {
-            console.log('Starting to load findings...');
-            const response = await fetch('./parsed_findings_w_chrpos.jsonl');
-            console.log('Fetched response:', response.status);
-            const text = await response.text();
-            console.log('Current chromosome:', this.state.data.currentChromosome);
+            console.log('Starting to load findings for chromosome:', this.state.data.currentChromosome);
             
-            // First, parse all markers
+            // Construct the filename based on current chromosome
+            const filename = `rxiv_findings/rxiv_findings_${this.state.data.currentChromosome}.jsonl`;
+            const response = await fetch(filename);
+            
+            if (!response.ok) {
+                console.error('Failed to fetch findings:', response.status);
+                return;
+            }
+            
+            const text = await response.text();
+            
+            // Parse all markers
             const allMarkers = text.trim().split('\n')
                 .map(line => {
                     try {
-                        console.log('Parsing line:', line);
                         const finding = JSON.parse(line);
                         let chromosome, position;
                         
                         if (finding.chrpos) {
                             [chromosome, position] = finding.chrpos.split(':');
-                            console.log('Found chrpos:', chromosome, position);
-                        } 
-                        else {
-                            console.log('No position found in:', finding);
+                        } else {
                             return null;
                         }
                         
@@ -90,27 +92,13 @@ class GenomeBrowser {
                             title: finding.title
                         };
                     } catch (e) {
-                        console.error('Failed to parse line:', line, e);
+                        console.error('Failed to parse line:', e);
                         return null;
                     }
                 })
-                .filter(marker => {
-                    if (!marker) {
-                        console.log('Filtered out null marker');
-                        return false;
-                    }
-                    if (isNaN(marker.position)) {
-                        console.log('Filtered out NaN position:', marker);
-                        return false;
-                    }
-                    if (marker.chromosome !== this.state.data.currentChromosome) {
-                        console.log('Filtered out wrong chromosome:', marker.chromosome, 'looking for:', this.state.data.currentChromosome);
-                        return false;
-                    }
-                    return true;
-                });
+                .filter(marker => marker && !isNaN(marker.position));
     
-            // Group markers by rsid and keep only one marker per locus (the first one)
+            // Group markers by rsid and keep only one marker per locus
             const uniqueMarkers = Object.values(
                 allMarkers.reduce((acc, marker) => {
                     if (!acc[marker.rsid]) {
@@ -120,11 +108,11 @@ class GenomeBrowser {
                 }, {})
             );
     
-            // Store all markers for the panel display, but only plot unique markers
-            this.state.data.allMarkers = allMarkers;  // Store all markers for panel display
-            this.state.data.markers = uniqueMarkers;  // Store only unique markers for plotting
-                    
-            console.log('Final unique markers:', uniqueMarkers);
+            // Store markers
+            this.state.data.allMarkers = allMarkers;
+            this.state.data.markers = uniqueMarkers;
+            
+            console.log(`Loaded ${uniqueMarkers.length} unique markers for ${this.state.data.currentChromosome}`);
                     
         } catch (error) {
             console.error('Failed to load findings:', error);
