@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="generator" content="pandoc" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
-  <title>biorxiv</title>
+  <title>How to download bioRxiv on a budget</title>
   <style>
     code{white-space: pre-wrap;}
     span.smallcaps{font-variant: small-caps;}
@@ -78,6 +78,9 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
+<header id="title-block-header">
+<h1 class="title">How to download bioRxiv on a budget</h1>
+</header>
 <h1 id="scientific-interface-tooling-lab">🔶 <a href="../">Scientific Interface &amp; Tooling Lab</a></h1>
 <h2 id="how-to-download-biorxiv-on-a-budget">How to download bioRxiv on a budget</h2>
 <p>bioRxiv hosts a S3 bucket containing all deposited preprint articles. This bucket is “requester pays” which unfortunately means you’ll be paying $0.09 per GB downloaded. As the entire bucket is ~6TB the total cost to download would be $500+. To avoid this we will first download the files to a machine hosted in EC2 (no egress) and then filter down the articles to plain-text before downloading. By keeping only the plain-text data we can massively reduce the size of the data to download affordably.</p>

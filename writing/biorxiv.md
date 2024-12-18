@@ -1,3 +1,7 @@
+---
+title: "How to download bioRxiv on a budget"
+---
+
 # 🔶 [Scientific Interface & Tooling Lab](../)
 ## How to download bioRxiv on a budget
 
