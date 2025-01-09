@@ -10,7 +10,7 @@
 <body>
 <h1 id="scientific-interface-tooling-lab">🔶 <a href="../">Scientific Interface &amp; Tooling Lab</a></h1>
 <h2 id="how-to-download-biorxiv-on-a-budget">How to download bioRxiv on a budget</h2>
-<p>bioRxiv hosts a S3 bucket containing all deposited preprint articles. This bucket is “requester pays” which unfortunately means you’ll be paying $0.09 per GB downloaded. As the entire bucket is ~6TB the total cost to download would be $500+. To avoid this we will first download the files to a machine hosted in EC2 (no egress) and then filter down the articles to plain-text before downloading. By keeping only the plain-text data we can massively reduce the size of the data to download affordably.</p>
+<p>bioRxiv hosts a S3 bucket containing all deposited preprint articles. This bucket is “requester pays” which unfortunately means amazon will charge $0.09 per GB downloaded. As the entire bucket is ~6TB the total cost to download would be $500+. To avoid this we will first download the files to a machine hosted in EC2 (no egress) and then filter down the articles to plain-text before downloading. By keeping only the plain-text data we can massively reduce the size of the data to download affordably.</p>
 <p>To download the data I used <code>i7ie.3xlarge</code> ($1.56/hour) which offers sufficient network and storage bandwidth to download at 2.5GB/s with 7.5TB of disk space.</p>
 <h3 id="downloading-biorxiv-to-ec2">Downloading bioRxiv to EC2</h3>
 <p>To efficiently download the thousands of compressed article files in parallel I used <code>s5cmd</code>:</p>
@@ -43,6 +43,5 @@
 <p>To reduce the download costs we can compress the directory of XML’s ready to download to our local machine with scp.</p>
 <div class="sourceCode" id="cb5"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true"></a><span class="fu">tar</span> cf - xml/ <span class="kw">|</span> <span class="ex">zstd</span> -T0 <span class="op">&gt;</span> biorxiv_text.tar.zst</span></code></pre></div>
 <p>This final file <code>biorxiv_text.tar.zst</code> is only 7GB which costs only $0.63 to download. Conveniently this entire process can be repeated for medrxiv - just change the s3 endpoint: “s3://biorxiv-src-monthly” -&gt; “s3://medrxiv-src-monthly”.</p>
-<p>If you don’t want to go through all of this yourself <a href="https://drive.google.com/drive/folders/1yV9Zw6vNfyiVP68I5VxYUtVRlJkfzaB1?usp=sharing">I’ve uploaded the plain-text content of both biorxiv+medrxiv up to Dec 2024</a></p>
 </body>
 </html>

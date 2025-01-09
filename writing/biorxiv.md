@@ -5,7 +5,7 @@ title: "How to download bioRxiv on a budget"
 # 🔶 [Scientific Interface & Tooling Lab](../)
 ## How to download bioRxiv on a budget
 
-bioRxiv hosts a S3 bucket containing all deposited preprint articles. This bucket is "requester pays" which unfortunately means you'll be paying $0.09 per GB downloaded. As the entire bucket is ~6TB the total cost to download would be $500+. To avoid this we will first download the files to a machine hosted in EC2 (no egress) and then filter down the articles to plain-text before downloading. By keeping only the plain-text data we can massively reduce the size of the data to download affordably.
+bioRxiv hosts a S3 bucket containing all deposited preprint articles. This bucket is "requester pays" which unfortunately means amazon will charge $0.09 per GB downloaded. As the entire bucket is ~6TB the total cost to download would be $500+. To avoid this we will first download the files to a machine hosted in EC2 (no egress) and then filter down the articles to plain-text before downloading. By keeping only the plain-text data we can massively reduce the size of the data to download affordably.
 
 To download the data I used `i7ie.3xlarge` ($1.56/hour) which offers sufficient network and storage bandwidth to download at 2.5GB/s with 7.5TB of disk space.
 
@@ -64,5 +64,3 @@ tar cf - xml/ | zstd -T0 > biorxiv_text.tar.zst
 ```
 
 This final file `biorxiv_text.tar.zst` is only 7GB which costs only $0.63 to download. Conveniently this entire process can be repeated for medrxiv - just change the s3 endpoint: "s3://biorxiv-src-monthly" -> "s3://medrxiv-src-monthly".
-
-If you don't want to go through all of this yourself [I've uploaded the plain-text content of both biorxiv+medrxiv up to Dec 2024](https://drive.google.com/drive/folders/1yV9Zw6vNfyiVP68I5VxYUtVRlJkfzaB1?usp=sharing)
