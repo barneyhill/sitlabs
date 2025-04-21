@@ -427,16 +427,34 @@
              color: #333;
          }
 
+        /* --- Home Link --- */
+        #home-link {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: #6c757d;
+            text-decoration: none;
+            font-size: 0.9em;
+            padding: 5px 10px;
+            border-radius: 5px;
+            transition: background-color 0.2s ease, color 0.2s ease;
+        }
+        #home-link:hover {
+             color: #333;
+             background-color: #f0f0f0;
+        }
+
     </style>
 </head>
 <body>
+    <a href="../index.html" id="home-link">🔶&nbsp;&nbsp;Scientific Interface & Tooling Lab</a>
     <header>
         <!-- Add "About" link here -->
         <a href="#" id="about-link">About</a>
         <div class="search-container">
             <h1>oligo-1</h1>
             <!-- Add subtitle here -->
-            <p class="subtitle">Prioritise effective antisense oligonucleotides</p>
+            <p class="subtitle">Design effective antisense oligonucleotides</p>
             <div id="search-controls">
                 <input type="text" id="gene-search" placeholder="Enter gene name... (HUGO format e.g. 'FGFR3')" value="FGFR3">
                 
@@ -1670,7 +1688,9 @@
 
             const transcriptName = transcript.name || transcript.id.split(':')[1] || transcript.id; // Get best name
             const geneName = gene.name || 'UnknownGene'; // Get gene name
-            console.log(`Generating ASOs for ${transcriptName} (Length: ${asoLengthToUse}, Genomic Range: ${transcript.start}-${transcript.end}, Strand: ${gene.strand})`);
+            // Correctly determine strand, default to '+' if missing
+            const geneStrand = gene?.strand === '-' ? '-' : '+'; 
+            console.log(`Generating ASOs for ${transcriptName} (Length: ${asoLengthToUse}, Genomic Range: ${transcript.start}-${transcript.end}, Strand: ${geneStrand})`);
 
             const loadingElement = document.getElementById('loading');
             const resultsContainer = document.getElementById('results-container');
@@ -1698,24 +1718,19 @@
                 const seqLen = sequence.length;
                 const geneStart = gene.start;
                 const geneEnd = gene.end;
-                const geneStrand = gene.strand;
+                // const geneStrand = gene.strand; // Moved strand check earlier for clarity
 
                 // Calculate the start and end indices within the sequence string
                 // corresponding to the transcript's genomic coordinates.
                 let transcriptSeqStartIndex;
                 let transcriptSeqEndIndex;
 
+                // NO CHANGE NEEDED HERE: Logic extracts the correct segment of the *reference* sequence
                 if (geneStrand === '+') {
-                    // For positive strand, sequence index = genomic_coord - gene_start
                     transcriptSeqStartIndex = transcript.start - geneStart;
-                    // End index is exclusive in substring, but inclusive in GFF.
-                    // We want the index *after* the last base of the transcript.
                     transcriptSeqEndIndex = transcript.end - geneStart + 1;
                 } else { // geneStrand === '-'
-                    // For negative strand, sequence index = gene_end - genomic_coord
-                    // Sequence start corresponds to transcript's genomic end
                     transcriptSeqStartIndex = geneEnd - transcript.end;
-                    // Sequence end corresponds to transcript's genomic start
                     transcriptSeqEndIndex = geneEnd - transcript.start + 1;
                 }
 
@@ -1737,24 +1752,47 @@
                 // Iterate using dynamic length
                 for (let i = transcriptSeqStartIndex; i <= transcriptSeqEndIndex - asoLengthToUse; i++) {
                     const subseq = sequence.substring(i, i + asoLengthToUse); // Use dynamic length
-                    const aso = createComplement(subseq);
+                    let aso = createComplement(subseq); // Get the complement first
+
+                    // *** NEW: Reverse the complement only if the gene is on the positive strand ***
+                    if (geneStrand === '+') {
+                        aso = aso.split('').reverse().join(''); // Reverse the complement
+                    }
+                    // If strand is '-', we use the complement directly (no reverse needed)
 
                     if (!aso.includes('N')) {
                         const gcContent = calculateGCContent(aso);
                         let genomicPosition;
 
-                        if (geneStrand === '+') {
-                            genomicPosition = geneStart + i + 1;
-                        } else {
-                            genomicPosition = geneEnd - (i + asoLengthToUse - 1); // Use dynamic length
-                        }
+                         // Genomic position calculation depends on strand
+                         if (geneStrand === '+') {
+                             // For '+' strand, the position is the start of the target segment + 1 (1-based)
+                             genomicPosition = geneStart + i + 1;
+                         } else { // geneStrand === '-'
+                             // For '-' strand, the position is the *start* of the target segment in genomic coordinates.
+                             // The target segment *ends* at index i in the *reverse complemented* reference sequence.
+                             // So the genomic coordinate corresponds to geneEnd - i.
+                             // However, the ASO binds to the start of the target sequence,
+                             // which corresponds to the end of the reference segment used.
+                             // Let's use the GFF standard: report the coordinate of the 5' most base of the *target site* on the reference genome.
+                             // For '-' strand, the ASO binds 5'->3' reading opposite the reference segment i to i+length.
+                             // The 5' end of the target site corresponds to reference position `geneEnd - i`.
+                             // The 3' end of the target site corresponds to reference position `geneEnd - (i + asoLengthToUse - 1)`
+                             // Let's report the start (lowest coordinate) which is `geneEnd - (i + asoLengthToUse - 1)`
+                             // Or, equivalently, the ASO corresponds to the reference sequence starting at `geneStart + i`.
+                             // Let's recalculate based on the reference sequence coordinates directly.
+                             // The ASO targets the sequence from `geneEnd - (i + asoLengthToUse - 1)` to `geneEnd - i`.
+                             // The starting position (lowest coordinate) is:
+                             genomicPosition = geneEnd - (i + asoLengthToUse - 1);
+
+                         }
 
                         const region = getAsoRegion(genomicPosition, asoLengthToUse, transcript); // Use dynamic length
 
                         asoDataList.push({
                             position: genomicPosition,
-                            targetSequence: subseq,
-                            asoSequence: aso,
+                            targetSequence: subseq, // Store the original *target* sequence on the reference strand
+                            asoSequence: aso,       // Store the generated ASO (complement or reverse complement)
                             gcContent: gcContent,
                             region: region
                         });
