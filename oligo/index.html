@@ -438,7 +438,7 @@
             <!-- Add subtitle here -->
             <p class="subtitle">Prioritise effective antisense oligonucleotides</p>
             <div id="search-controls">
-                <input type="text" id="gene-search" placeholder="Enter gene name... (HUGO format e.g. 'FGFR3')">
+                <input type="text" id="gene-search" placeholder="Enter gene name... (HUGO format e.g. 'FGFR3')" value="FGFR3">
                 
                 <button id="search-button">Search</button>
                 <button id="toggle-chemistry-options" title="Toggle Chemistry Options">
@@ -487,7 +487,7 @@
     <div id="about-popup" class="hidden">
         <button id="close-popup">&times;</button>
         <h2>About oligo-1</h2>
-        <p>This tool predicts the efficacy of RNASE-H1 mediated antisense oligonucleotides (ASOs) based on their sequence and chemical modifications.</p>
+        <p>This tool predicts the efficacy of RNAse-H1 mediated antisense oligonucleotides (ASOs) based on their sequence and chemical modifications.</p>
         <p>Enter a gene name, select a transcript, define the ASO chemistry (sugar/backbone), and view predicted scores.</p>
         <p><em>Model details and citation will go here.</em></p>
     </div>
@@ -1269,6 +1269,8 @@
                 console.error('ONNX Runtime (ort) is not defined.');
             } else {
                 console.log('ONNX Runtime loaded successfully.');
+                // Automatically trigger search on load if ONNX is available
+                searchGene(); // Call searchGene here
             }
          });
 
@@ -1412,7 +1414,7 @@
             // --- Update Plot Title ---
             const plotTitleElement = document.getElementById('transcript-plot-title');
             if (gffData.gene && gffData.gene.name) {
-                plotTitleElement.textContent = `${gffData.gene.name} transcripts`;
+                plotTitleElement.textContent = `Select a ${gffData.gene.name} transcript...`;
             } else {
                  plotTitleElement.textContent = 'Transcript Structure'; // Fallback
             }
