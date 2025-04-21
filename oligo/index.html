@@ -1,0 +1,1928 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>oligo-1</title>
+    <script src="https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.min.js"></script>
+    <!-- Load ONNX Runtime Web -->
+    <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.21.0/dist/ort.min.js"></script>
+    <!-- Optional: Add Google Font link for Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&family=Libre+Baskerville:wght@400;700&family=Playfair+Display:wght@400&display=swap" rel="stylesheet">
+    <!-- Add Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" integrity="sha512-SnH5WK+bZxgPHs44uWIX+LLJAJ9/2PkPKZ5QiAj6Ta86w+fsb2TkcmfRyVX3pBnMFcV7oQPJkl9QevSCWr3W6A==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+
+    <style>
+        /* --- Base & Typography --- */
+        body {
+            font-family: 'Inter', Arial, sans-serif; /* Clean sans-serif */
+            margin: 0;
+            padding: 0;
+            line-height: 1.6;
+            background-color: #FAF8F5; /* Main beige background */
+            color: #5a5a5a; /* Muted text color */
+            padding-bottom: 50px; /* Add space at bottom */
+        }
+
+        h1, h2, h3 {
+            color: #333; /* Darker color for headings */
+            font-weight: 500;
+        }
+
+        /* --- Header & Search --- */
+        header {
+            background-color: transparent; /* Remove distinct header background */
+            padding: 40px 0 20px 0; /* Adjust padding */
+            text-align: center;
+        }
+
+        header h1 {
+            font-family: "Libre Baskerville", serif; /* Use Libre Baskerville */
+            font-size: 2.5em; /* Larger title */
+            font-weight: 400; /* Normal weight often looks best for Baskerville */
+            margin-bottom: 30px;
+            color: #4a4a4a;
+        }
+
+        .search-container {
+            max-width: 700px; /* Adjust width */
+            margin: 0 auto;
+        }
+
+        #search-controls {
+            display: flex;
+            gap: 15px; 
+            align-items: flex-end; /* Align items to bottom */
+            flex-wrap: wrap; /* Ensure wrapping */
+            background-color: #FFFFFF; 
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.06); 
+            margin: 20px auto;
+        }
+
+        /* Container for the chemistry options row */
+        .chemistry-option { 
+            display: none; /* Hidden by default */
+            flex-basis: 100%; /* Take full width when visible */
+            margin-top: 15px; /* Add space above when visible */
+            gap: 15px; /* Gap between sugar and backbone groups */
+            width: 100%; /* Ensure it spans full width for internal flex items */
+        }
+
+        .chemistry-option.visible {
+            display: flex; /* Show as a flex row when visible */
+        }
+        
+        /* Groups for label+input pairs */
+        #sugar-input-group, 
+        #backbone-input-group {
+            flex-basis: 50%; /* Each group takes half the row */
+            flex-grow: 1; /* Allow growing if needed */
+        }
+
+        /* Style for the labels above the inputs */
+        .chemistry-option label { /* Target labels within the options wrapper */
+            display: block;
+            font-size: 0.8em; 
+            color: #666; 
+            margin-bottom: 3px;
+            text-align: left;
+            font-weight: 500;
+        }
+
+        #gene-search,
+        #chemistry-input,
+        #backbone-input {
+            /* width adjusted below */
+            padding: 10px 12px; 
+            font-size: 15px; 
+            border: 1px solid #EAE8E5; 
+            border-radius: 8px; 
+            background-color: #FDFCFB; 
+            transition: border-color 0.2s ease;
+            color: #5a5a5a;
+            box-sizing: border-box; 
+        }
+        
+        /* Gene search takes available space on top row */
+        #gene-search { 
+             flex-grow: 1; 
+             /* width: auto; */ /* Let flexbox handle width */
+        } 
+
+        /* Chemistry inputs take full width of their parent group */
+        #chemistry-input,
+        #backbone-input {
+             width: 100%;
+        }
+       
+        #backbone-input::placeholder { color: #aaa; font-style: italic; } 
+
+        #gene-search::placeholder,
+        #chemistry-input::placeholder {
+            color: #aaa; 
+            font-style: italic;
+        }
+
+        #gene-search:focus,
+        #chemistry-input:focus,
+        #backbone-input:focus {
+            outline: none;
+            border-color: #D3A99D; 
+            background-color: #fff;
+        }
+
+        #search-button,
+        #toggle-chemistry-options { 
+            /* Base styles */
+            padding: 10px 15px; 
+            background-color: #E8796A; 
+            color: white;
+            border: none;
+            border-radius: 8px; 
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 500; 
+            flex-shrink: 0; /* Prevent buttons from shrinking */
+            transition: background-color 0.2s ease;
+            height: 40px; 
+            line-height: 1; 
+        }
+        #toggle-chemistry-options {
+            padding: 10px 12px; 
+            background-color: #f0f0f0; 
+            color: #5a5a5a; 
+            /* No margin needed here */
+        }
+        #search-button {
+            margin-left: auto; /* Push this button and the gear button to the right */
+        }
+         
+        #search-button:hover {
+            background-color: #D9685A; 
+        }
+        #toggle-chemistry-options:hover {
+             background-color: #e0e0e0; 
+        }
+
+        /* --- Content Areas (Transcript Plot, Results) --- */
+        .content, #transcript-plot-container {
+             max-width: 1100px; /* Slightly narrower main content */
+             margin: 30px auto;
+             padding: 0 15px;
+        }
+
+        #transcript-plot-container {
+            background-color: #FFFFFF; /* White background for plot area */
+            border: 1px solid #EAE8E5; /* Subtle border */
+            border-radius: 12px; /* Rounded corners */
+            padding: 25px;
+            min-height: 100px;
+            display: none;
+            overflow-x: auto;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.04); /* Subtle shadow */
+        }
+         #transcript-plot-container h2 {
+             text-align: center;
+             margin-top: 0;
+             margin-bottom: 25px;
+             color: #4a4a4a;
+         }
+
+        #transcript-plot-svg {
+            display: block;
+            width: 100%;
+        }
+
+        /* --- Results Table --- */
+        #aso-table-header {
+             display: flex; /* Use flex to align items */
+             justify-content: space-between; /* Push title and icon to opposite ends */
+             align-items: center; /* Keep vertically centered */
+             margin-top: 20px; /* Restore top margin */
+             margin-bottom: 5px; /* Add small margin below header before table */
+             padding: 0 5px; /* Add slight horizontal padding to align with table content edges */
+             /* display: none; Managed by JS */
+        }
+
+        #aso-table-subtitle {
+             color: #4a4a4a;
+             font-weight: 500;
+             margin: 0; /* Remove default margin */
+        }
+
+        /* Style for the download icon link */
+        #download-aso-table {
+            color: #4a4a4a; /* Match subtitle text color */
+            text-decoration: none;
+            font-size: 1.1em; /* Adjust icon size */
+            line-height: 1; /* Ensure icon vertical alignment */
+            /* display: none; Managed by JS */
+        }
+        #download-aso-table:hover {
+            color: #E8796A; /* Use accent color for hover */
+        }
+
+        /* Add class to control visibility */
+        .hidden {
+            display: none !important; /* Use !important to override potential inline styles if any remain */
+        }
+
+        #results-container {
+            margin-top: 10px; /* Reduced space after subtitle */
+            padding: 0;
+            background-color: #FFFFFF; /* White background */
+            border-radius: 12px; /* Rounded corners */
+            border: 1px solid #EAE8E5; /* Subtle border */
+            display: none;
+            max-height: 500px; /* Increase max height */
+            overflow-y: auto;
+            overflow-x: hidden;
+             box-shadow: 0 5px 15px rgba(0, 0, 0, 0.04); /* Subtle shadow */
+        }
+
+        #results-container table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        #results-container th,
+        #results-container td {
+            border: none; /* Remove all borders */
+            padding: 10px 12px; /* Adjust padding */
+            text-align: left;
+            vertical-align: middle;
+            border-bottom: 1px solid #F0EBE8; /* Light separator line */
+        }
+        #results-container th {
+            background-color: #F7F5F2; /* Very light beige for header */
+            font-weight: 500; /* Medium weight */
+            color: #333;
+            font-size: 0.9em;
+            text-transform: uppercase; /* Optional: uppercase headers */
+            letter-spacing: 0.5px; /* Optional: spacing */
+        }
+        #results-container td {
+            font-size: 0.95em;
+        }
+        #results-container tr:last-child td {
+             border-bottom: none; /* No border on last row */
+        }
+
+        #results-container tr:hover {
+            background-color: #FDFCFB; /* Very subtle hover */
+        }
+        /* Style bold ASO bases */
+        #results-container td b {
+            font-weight: bold; /* Ensure boldness */
+            color: #333; /* Darker color for modified */
+        }
+
+        /* --- Loading & Error --- */
+        .loading {
+            text-align: center;
+            margin: 30px 0;
+            color: #888;
+            font-style: italic;
+            display: none;
+        }
+        .error {
+            color: #C84B31; /* Muted red for errors */
+            background-color: #FBEAE5; /* Light red background */
+            border: 1px solid #F5D0C7;
+            border-radius: 8px;
+            padding: 10px 15px;
+            margin: 20px auto;
+            max-width: 700px; /* Limit width */
+            display: none; /* Initially hidden */
+        }
+
+        /* --- SVG Plot Styles (Highlights) --- */
+        #transcript-plot-svg .transcript-row {
+            cursor: pointer;
+        }
+        /* Base colors (can be adjusted in JS if needed, but defaults here) */
+        #transcript-plot-svg rect { fill: #a9a9a9; stroke: #808080; } /* UTR */
+        #transcript-plot-svg rect[fill='#007bff'] { fill: #A1C4FD; stroke: #7DA9F5; } /* CDS - Lighter Blue */
+        #transcript-plot-svg line[stroke='#999'] { stroke: #ccc; } /* Intron Line */
+        #transcript-plot-svg polyline[stroke='#555'] { stroke: #aaa; } /* Chevron */
+        #transcript-plot-svg text { fill: #5a5a5a; } /* Default text color */
+        #transcript-plot-svg .transcript-row text[font-weight='bold'] { color: #333; } /* Bold canonical label */
+
+        #transcript-plot-svg .transcript-row.hover-highlight rect,
+        #transcript-plot-svg .transcript-row.hover-highlight line,
+        #transcript-plot-svg .transcript-row.hover-highlight polyline {
+             stroke: #D3A99D; /* Muted orange/brown hover */
+             stroke-width: 1.5px;
+             /* Opacity might be better than changing all strokes */
+             /* opacity: 0.7; */
+        }
+
+        #transcript-plot-svg .transcript-row.selected rect,
+        #transcript-plot-svg .transcript-row.selected line,
+        #transcript-plot-svg .transcript-row.selected polyline {
+             stroke: #E8796A; /* Accent color for selected */
+             stroke-width: 2px;
+        }
+         /* Highlight selected label too */
+        #transcript-plot-svg .transcript-row.selected text {
+            fill: #E8796A;
+            font-weight: bold;
+        }
+
+        /* ASO Marker on plot */
+        /* Style previously applied in JS, can be controlled here or JS */
+        #aso-hover-marker line {
+            stroke: #E8796A; /* Match accent */
+            /* stroke-width: 2; Set in JS */
+        }
+
+        /* Style for the new subtitle */
+        .subtitle {
+            font-size: 1.1em;
+            color: #6c757d; /* A slightly lighter grey */
+            margin-top: -20px; /* Pull it closer to the title */
+            margin-bottom: 30px;
+            font-weight: 400;
+        }
+
+        /* --- About Link --- */
+        #about-link {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            color: #6c757d;
+            text-decoration: none;
+            font-size: 0.9em;
+            padding: 5px 10px;
+            border-radius: 5px;
+            transition: background-color 0.2s ease, color 0.2s ease;
+        }
+        #about-link:hover {
+             color: #333;
+             background-color: #f0f0f0;
+        }
+
+        /* --- Popup Styles --- */
+         #popup-overlay {
+             position: fixed;
+             top: 0;
+             left: 0;
+             width: 100%;
+             height: 100%;
+             background-color: rgba(0, 0, 0, 0.5); /* Semi-transparent black */
+             z-index: 999; /* Below popup, above everything else */
+             /* .hidden class controls display: none */
+         }
+
+         #about-popup {
+             position: fixed;
+             top: 50%;
+             left: 50%;
+             transform: translate(-50%, -50%);
+             background-color: #FFFFFF;
+             padding: 30px 40px;
+             border-radius: 12px;
+             box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+             z-index: 1000; /* Above overlay */
+             max-width: 500px;
+             width: 90%;
+             /* .hidden class controls display: none */
+             line-height: 1.7;
+         }
+
+         #about-popup h2 {
+             margin-top: 0;
+             margin-bottom: 20px;
+             color: #333;
+             text-align: center;
+             font-family: "Libre Baskerville", serif; /* Match title font if desired */
+             font-weight: 700; /* Bolder for popup title */
+         }
+         #about-popup p {
+             margin-bottom: 15px;
+             color: #5a5a5a;
+         }
+         #about-popup p em { /* Style for placeholder citation text */
+            color: #888;
+         }
+
+         #close-popup {
+             position: absolute;
+             top: 10px;
+             right: 15px;
+             background: none;
+             border: none;
+             font-size: 24px; /* Larger close button */
+             color: #aaa;
+             cursor: pointer;
+             line-height: 1;
+             padding: 0;
+             transition: color 0.2s ease;
+         }
+         #close-popup:hover {
+             color: #333;
+         }
+
+    </style>
+</head>
+<body>
+    <header>
+        <!-- Add "About" link here -->
+        <a href="#" id="about-link">About</a>
+        <div class="search-container">
+            <h1>oligo-1</h1>
+            <!-- Add subtitle here -->
+            <p class="subtitle">Prioritise effective antisense oligonucleotides</p>
+            <div id="search-controls">
+                <input type="text" id="gene-search" placeholder="Enter gene name... (HUGO format e.g. 'FGFR3')">
+                
+                <button id="search-button">Search</button>
+                <button id="toggle-chemistry-options" title="Toggle Chemistry Options">
+                    <i class="fa-solid fa-gear"></i>
+                </button>
+
+                <!-- Wrapper for both chemistry options -->
+                <div id="chemistry-options-wrapper" class="chemistry-option"> 
+                    <div id="sugar-input-group"> 
+                        <label for="chemistry-input">Sugar Modifications</label>
+                        <input type="text" id="chemistry-input" placeholder="modifications: comma separated MOE,DNA,cEt" value="5xMOE,10xDNA,5xMOE">
+                    </div>
+
+                    <div id="backbone-input-group"> 
+                        <label for="backbone-input">Backbone Modifications</label>
+                        <input type="text" id="backbone-input" placeholder="'s' (PS) / 'o' (PD)" value="sssssssssssssssssss"> 
+                    </div>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Transcript Plot Area -->
+    <div id="transcript-plot-container">
+         <h2 id="transcript-plot-title">Transcript Structure</h2>
+         <div class="loading" id="transcript-loading">Loading transcripts...</div>
+         <div class="error" id="transcript-error"></div>
+         <svg id="transcript-plot-svg" width="100%" height="300"></svg> <!-- Placeholder SVG -->
+    </div>
+
+    <div class="content">
+        <div class="loading" id="loading">Loading...</div>
+        <div class="error" id="error-message"></div>
+        <!-- Container for subtitle and download icon - Add hidden class -->
+        <div id="aso-table-header" class="hidden"> 
+             <h3 id="aso-table-subtitle"></h3>
+             <a href="#" id="download-aso-table" title="Download ASO Table as CSV">
+                 <i class="fa-solid fa-download"></i>
+             </a>
+        </div>
+        <div id="results-container"></div>
+    </div>
+
+    <!-- Add Popup Structure at the end of body -->
+    <div id="popup-overlay" class="hidden"></div>
+    <div id="about-popup" class="hidden">
+        <button id="close-popup">&times;</button>
+        <h2>About oligo-1</h2>
+        <p>This tool predicts the efficacy of RNASE-H1 mediated antisense oligonucleotides (ASOs) based on their sequence and chemical modifications.</p>
+        <p>Enter a gene name, select a transcript, define the ASO chemistry (sugar/backbone), and view predicted scores.</p>
+        <p><em>Model details and citation will go here.</em></p>
+    </div>
+
+    <script>
+        // --- Global storage for current gene data ---
+        let currentSequence = null;
+        let currentGffData = null; // Will also store plotParams after rendering
+        const svgNS = "http://www.w3.org/2000/svg"; // SVG Namespace
+
+        // --- Global storage for ASO Design (will be set by searchGene) ---
+        let currentAsoLength = 0;
+        let currentSugarPattern = [];
+        let currentBackbonePattern = [];
+
+        // --- Mappings (Global) ---
+        const nucleotide_to_idx = { 'A': 0n, 'T': 1n, 'G': 2n, 'C': 3n, 'N': 4n }; // Added 'N' for default case
+        const sugar_to_idx = { 'MOE': 0n, 'cEt': 1n, null: 2n }; // null represents DNA
+        const backbone_to_idx = { false: 0n, true: 1n }; // true=PS('s'), false=PD ('o')
+
+        // --- Constants ---
+        const batchSizeForONNX = 2**14; // Define batch size for ONNX inference calls
+        const defaultSugarPattern = [ // Default 20mer MOE gapmer
+            'MOE', 'MOE', 'MOE', 'MOE', 'MOE',
+            null,  null,  null,  null,  null,
+            null,  null,  null,  null,  null,
+            'MOE', 'MOE', 'MOE', 'MOE', 'MOE'
+        ];
+
+        // --- Helper to parse and validate chemistry ---
+        function parseChemistryInput(inputString) {
+            if (!inputString || inputString.trim() === '') {
+                // Default to 20mer MOE gapmer if input is empty
+                console.log("Chemistry input empty, using default 20mer MOE gapmer.");
+                return {
+                    valid: true,
+                    sugarPattern: [...defaultSugarPattern], // Use a copy
+                    length: defaultSugarPattern.length
+                };
+            }
+
+            const parts = inputString.split(',');
+            const sugarPattern = [];
+            const validChemistries = ['MOE', 'CET', 'NULL', 'DNA']; // Accepted inputs (case-insensitive)
+            const multiplierRegex = /^(\d+)X(.+)$/i; // Matches "Number x Chemistry", case-insensitive 'x'
+
+            for (const rawPart of parts) {
+                const part = rawPart.trim();
+                if (!part) continue; // Skip empty parts resulting from trailing commas etc.
+
+                const match = part.match(multiplierRegex);
+
+                if (match) {
+                    // Multiplier format found (e.g., "5xMOE")
+                    const count = parseInt(match[1], 10);
+                    const chem = match[2].trim().toUpperCase();
+
+                    if (isNaN(count) || count <= 0) {
+                         return { valid: false, error: `Invalid count in multiplier: "${rawPart}". Count must be a positive number.` };
+                    }
+                    if (!validChemistries.includes(chem)) {
+                         return { valid: false, error: `Invalid chemistry in multiplier: "${chem}" in "${rawPart}". Use MOE, cEt, DNA, or null.` };
+                    }
+
+                    // Normalize chemistry
+                    let normalizedChem;
+                    if (chem === 'MOE') {
+                        normalizedChem = 'MOE';
+                    } else if (chem === 'CET') {
+                        normalizedChem = 'cEt';
+                    } else { // NULL or DNA input maps to `null` for the pattern array
+                        normalizedChem = null;
+                    }
+
+                    // Add the chemistry 'count' times
+                    for (let i = 0; i < count; i++) {
+                        sugarPattern.push(normalizedChem);
+                    }
+
+                } else {
+                    // Single chemistry format (e.g., "MOE")
+                    const chem = part.toUpperCase();
+                    if (!validChemistries.includes(chem)) {
+                        return {
+                            valid: false,
+                            error: `Invalid chemistry found: "${chem}". Use MOE, cEt, DNA, or null, or format as NxCHEM.`
+                        };
+                    }
+
+                    // Normalize chemistry
+                    let normalizedChem;
+                    if (chem === 'MOE') {
+                        normalizedChem = 'MOE';
+                    } else if (chem === 'CET') {
+                        normalizedChem = 'cEt';
+                    } else { // NULL or DNA input maps to `null` for the pattern array
+                        normalizedChem = null;
+                    }
+                    sugarPattern.push(normalizedChem);
+                }
+            }
+
+            if (sugarPattern.length === 0) {
+                 return { valid: false, error: "Chemistry pattern cannot be empty after parsing." };
+            }
+
+            return {
+                valid: true,
+                sugarPattern: sugarPattern,
+                length: sugarPattern.length
+            };
+        }
+
+        // --- Helper to parse and validate backbone ---
+        /**
+         * Parses and validates the backbone chemistry string.
+         * @param {string} inputString - The string containing 's' and 'o' characters.
+         * @param {number} expectedLength - The required length (ASO length - 1).
+         * @returns {{valid: boolean, backbonePattern: boolean[] | null, error: string | null}}
+         */
+        function parseBackboneInput(inputString, expectedLength) {
+            if (typeof inputString !== 'string') {
+                 return { valid: false, backbonePattern: null, error: "Backbone input must be a string." };
+            }
+            
+            const backboneString = inputString.trim();
+            
+            if (!backboneString) {
+                return { valid: false, backbonePattern: null, error: "Backbone chemistry input cannot be empty." };
+            }
+
+            if (backboneString.length !== expectedLength) {
+                return { 
+                    valid: false, 
+                    backbonePattern: null, 
+                    error: `Backbone chemistry length mismatch. Expected ${expectedLength} characters (ASO length - 1), but got ${backboneString.length}.` 
+                };
+            }
+
+            const backbonePattern = [];
+            const validChars = /^[so]+$/i; // Regex to check for only 's' or 'o', case-insensitive
+
+            if (!validChars.test(backboneString)) {
+                return { 
+                    valid: false, 
+                    backbonePattern: null, 
+                    error: "Backbone chemistry string can only contain 's' (PS) and 'o' (PD) characters." 
+                };
+            }
+
+            for (const char of backboneString.toLowerCase()) {
+                if (char === 'o') {
+                    backbonePattern.push(true); // true represents PD backbone (index 0n)
+                } else { // char === 's'
+                    backbonePattern.push(false); // false represents PS backbone (index 1n)
+                }
+            }
+
+            return {
+                valid: true,
+                backbonePattern: backbonePattern,
+                error: null
+            };
+        }
+
+        document.getElementById('search-button').addEventListener('click', searchGene);
+        document.getElementById('gene-search').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                searchGene();
+            }
+        });
+        // Allow enter in chemistry input too
+        document.getElementById('chemistry-input').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                searchGene();
+            }
+        });
+        // Allow enter in backbone input too
+        document.getElementById('backbone-input').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                searchGene();
+            }
+        });
+        // Add listener for the gear icon toggle
+        document.getElementById('toggle-chemistry-options').addEventListener('click', function() {
+            // Target the single wrapper container
+            const optionsWrapper = document.getElementById('chemistry-options-wrapper'); 
+            optionsWrapper.classList.toggle('visible');
+        });
+
+        async function searchGene() {
+            const geneName = document.getElementById('gene-search').value.trim();
+            const chemistryString = document.getElementById('chemistry-input').value.trim(); // Get chemistry input
+            const backboneString = document.getElementById('backbone-input').value.trim(); // Get backbone input
+            const loadingElement = document.getElementById('loading');
+            const resultsContainer = document.getElementById('results-container');
+            const errorElement = document.getElementById('error-message');
+            const transcriptContainer = document.getElementById('transcript-plot-container');
+            const transcriptLoading = document.getElementById('transcript-loading');
+            const transcriptError = document.getElementById('transcript-error');
+            const transcriptSvg = document.getElementById('transcript-plot-svg');
+            const subtitleHeader = document.getElementById('aso-table-header');
+            const subtitleElement = document.getElementById('aso-table-subtitle');
+            const downloadLink = document.getElementById('download-aso-table');
+
+            // --- Parse and Validate Sugar Chemistry Input FIRST ---
+            const chemistryResult = parseChemistryInput(chemistryString);
+            if (!chemistryResult.valid) {
+                 showError(`Sugar Chemistry Error: ${chemistryResult.error}`);
+                 resultsContainer.style.display = 'none'; 
+                 resultsContainer.innerHTML = '';
+                 subtitleHeader.classList.add('hidden'); 
+                 return;
+            }
+            // Store derived length and sugar pattern temporarily
+            const derivedAsoLength = chemistryResult.length;
+            const parsedSugarPattern = chemistryResult.sugarPattern;
+
+            // --- Parse and Validate Backbone Chemistry Input SECOND ---
+            const expectedBackboneLength = derivedAsoLength - 1;
+            const backboneResult = parseBackboneInput(backboneString, expectedBackboneLength);
+            if (!backboneResult.valid) {
+                 showError(`Backbone Chemistry Error: ${backboneResult.error}`);
+                 resultsContainer.style.display = 'none'; 
+                 resultsContainer.innerHTML = '';
+                 subtitleHeader.classList.add('hidden'); 
+                 return;
+            }
+            // Get the N-1 length boolean array
+            let parsedBackbonePattern = backboneResult.backbonePattern; 
+
+            // *** FIX: Append the final assumed PD linkage (true) ***
+            // The model expects a pattern of length N, where the last element corresponds
+            // to the linkage *after* the last nucleotide (implicitly PD).
+            parsedBackbonePattern.push(true); 
+
+             // --- Set Global ASO Design Parameters ---
+             currentAsoLength = derivedAsoLength;
+             currentSugarPattern = parsedSugarPattern;
+             currentBackbonePattern = parsedBackbonePattern; // Now use the corrected (length N) pattern
+             // REMOVED: Old default backbone generation
+             
+             console.log(`Using ASO Length: ${currentAsoLength}`);
+             console.log("Sugar Pattern:", currentSugarPattern);
+             // Log the N-length boolean array (true=PD, false=PS)
+             console.log(`Backbone Pattern (Length ${currentBackbonePattern.length}, true=PD, false=PS):`, currentBackbonePattern); 
+
+            // Reset global sequence/GFF data
+            currentSequence = null;
+            currentGffData = null;
+
+            if (!geneName) {
+                showError('Please enter a gene name');
+                return;
+            }
+
+            // Clear previous results and errors
+            resultsContainer.style.display = 'none';
+            resultsContainer.innerHTML = '';
+            subtitleHeader.classList.add('hidden'); // Use class
+            errorElement.style.display = 'none'; // errorElement can keep style.display
+            transcriptContainer.style.display = 'none';
+            transcriptError.style.display = 'none';
+            transcriptLoading.style.display = 'none';
+            transcriptSvg.innerHTML = '';
+
+            // Show loading indicator for transcripts
+            transcriptContainer.style.display = 'block';
+            transcriptLoading.textContent = 'Loading gene data...';
+            transcriptLoading.style.display = 'block';
+            loadingElement.style.display = 'none';
+
+            try {
+                // --- Fetch Gene Sequence (FASTA) ---
+                transcriptLoading.textContent = 'Fetching sequence...';
+                const sequenceResponse = await fetch(`gene_sequences/${geneName}.fa.gz`);
+                if (!sequenceResponse.ok) {
+                    throw new Error(`Gene sequence not found for: ${geneName}`);
+                }
+                const sequenceArrayBuffer = await sequenceResponse.arrayBuffer();
+                transcriptLoading.textContent = 'Decompressing sequence...';
+                const compressedSeq = new Uint8Array(sequenceArrayBuffer);
+                const decompressedSeq = pako.inflate(compressedSeq);
+                const textDecoder = new TextDecoder('utf-8');
+                const fastaContent = textDecoder.decode(decompressedSeq);
+
+                // Extract the actual sequence from FASTA format
+                const lines = fastaContent.split('\n');
+                let sequence = '';
+                for (let i = 1; i < lines.length; i++) {
+                    if (lines[i] && !lines[i].startsWith('>')) { // Ensure line exists and skip headers
+                        sequence += lines[i].trim().toUpperCase(); // Ensure uppercase
+                    }
+                }
+                if (!sequence) {
+                    throw new Error('No sequence data found in the FASTA file.');
+                }
+                 currentSequence = sequence; // Store sequence globally
+
+
+                // --- Fetch Gene Annotations (GFF3) ---
+                let gffData = null; // Local variable for fetching/parsing
+                try {
+                    transcriptLoading.textContent = 'Fetching annotations...';
+                    const gffResponse = await fetch(`gene_sequences/${geneName}.gff3.gz`);
+                    if (!gffResponse.ok) {
+                         console.warn(`GFF3 annotation file not found for: ${geneName}. Skipping transcript plot.`);
+                         transcriptLoading.style.display = 'none';
+                         transcriptError.textContent = `GFF3 annotation file not found for ${geneName}.`;
+                         transcriptError.style.display = 'block';
+                         // Can't proceed without GFF for this workflow
+                         return;
+                    } else {
+                        transcriptLoading.textContent = 'Decompressing annotations...';
+                        const gffArrayBuffer = await gffResponse.arrayBuffer();
+                        const gffCompressed = new Uint8Array(gffArrayBuffer);
+                        const gffDecompressed = pako.inflate(gffCompressed);
+                        const gffText = textDecoder.decode(gffDecompressed);
+
+                        // --- Parse GFF3 ---
+                        transcriptLoading.textContent = 'Parsing annotations...';
+                        gffData = parseGFF3(gffText); // Call the parser
+
+                        // --- Render Transcripts ---
+                        if (gffData && gffData.transcripts.length > 0) {
+                            currentGffData = gffData;
+                            transcriptLoading.textContent = 'Rendering transcripts...';
+                            renderTranscripts(currentGffData, transcriptSvg);
+                            transcriptLoading.style.display = 'none';
+                            transcriptError.style.display = 'none';
+                            console.log("Transcript plot rendered. Click a transcript to generate ASOs with current chemistry.");
+                        } else if (gffData) {
+                             // Parsed OK, but no transcripts found
+                             throw new Error(`No transcript features found in GFF for ${geneName}.`);
+                        } else {
+                            // Parsing itself failed
+                            throw new Error("Failed to parse GFF3 data.");
+                        }
+                    }
+                } catch (gffError) {
+                     // Throw error up to the main catch block if GFF processing fails
+                     throw new Error(`Error processing GFF3: ${gffError.message}`);
+                }
+
+                // *** ASO Generation logic removed from here ***
+
+            } catch (error) {
+                console.error('Error during initial gene loading or transcript rendering:', error);
+                showError(`${error.message}`); // Show the actual error message caught
+                resultsContainer.style.display = 'none'; // Hide results container on error
+                transcriptContainer.style.display = 'none'; // Hide transcript container on error
+                transcriptLoading.style.display = 'none';
+            } finally {
+                // Ensure transcript loading is hidden finally
+                 if (transcriptLoading.style.display !== 'none') {
+                     transcriptLoading.style.display = 'none';
+                 }
+                 // Keep results loading hidden until triggered
+                 loadingElement.style.display = 'none';
+            }
+        }
+
+        function calculateGCContent(sequence) {
+            if (!sequence) return 0;
+            const gcCount = (sequence.match(/[GC]/gi) || []).length;
+            return (gcCount / sequence.length) * 100;
+        }
+
+        function generateASOSequences(sequence, length) {
+            const asoSequences = [];
+            if (sequence.length < length) {
+                console.warn("Sequence length is less than ASO length. No ASOs generated.");
+                return asoSequences; // Return empty if sequence is too short
+            }
+
+            for (let i = 0; i <= sequence.length - length; i++) {
+                const subseq = sequence.substring(i, i + length);
+                // Create ASO (complement) of the subsequence
+                const aso = createComplement(subseq);
+                // Only add if the ASO doesn't contain 'N' (meaning the target didn't contain 'N')
+                if (!aso.includes('N')) {
+                    // Calculate GC content for the ASO sequence
+                    const gcContent = calculateGCContent(aso);
+                    asoSequences.push({
+                        position: i + 1,
+                        targetSequence: subseq,
+                        asoSequence: aso,
+                        gcContent: gcContent // Store GC content
+                        // score will be added later
+                    });
+                } else {
+                     console.log(`Skipping ASO at position ${i+1} due to non-standard base in target: ${subseq}`);
+                }
+            }
+            
+            return asoSequences;
+        }
+        
+        function createComplement(sequence) {
+            // Create the complement sequence (A→T, T→A, G→C, C→G)
+            return sequence.split('').map(base => {
+                switch(base.toUpperCase()) { // Ensure case-insensitivity
+                    case 'A': return 'T';
+                    case 'T': return 'A';
+                    case 'G': return 'C';
+                    case 'C': return 'G';
+                    default: return 'N'; // Handle non-standard bases like N
+                }
+            }).join('');
+        }
+
+        /**
+         * Prepares batched input data for the ONNX model.
+         * @param {string[]} sequences - Array of nucleotide sequence strings.
+         * @param {Array<string|null>} sugarPattern - The sugar pattern list (applied to all sequences).
+         * @param {boolean[]} backbonePattern - The backbone pattern list (applied to all sequences).
+         * @returns {{seqData: BigInt64Array, sugarData: BigInt64Array, backboneData: BigInt64Array, batchSize: number, seqLength: number}}
+         */
+        function prepareInputData(sequences, sugarPattern, backbonePattern) {
+            if (!sequences || sequences.length === 0) {
+                // Return empty data if no sequences are provided (e.g., from short gene)
+                 return { seqData: new BigInt64Array(0), sugarData: new BigInt64Array(0), backboneData: new BigInt64Array(0), batchSize: 0, seqLength: 0 };
+                // throw new Error("Input sequences array cannot be empty.");
+            }
+
+            const batchSize = sequences.length;
+            const seqLength = sequences[0].length; // Assume all sequences have the same length
+
+            // Validate lengths - Ensure patterns match the expected ASO length
+             if (sugarPattern.length !== seqLength) {
+                 throw new Error(`Sugar pattern length (${sugarPattern.length}) must match sequence length (${seqLength}).`);
+             }
+             if (backbonePattern.length !== seqLength) {
+                 throw new Error(`Backbone pattern length (${backbonePattern.length}) must match sequence length (${seqLength}).`);
+             }
+            // Validate sequence lengths within the batch
+            for(let i = 1; i < batchSize; ++i) {
+                 if (sequences[i].length !== seqLength) {
+                    throw new Error(`All sequences in the batch must have the same length (${seqLength}). Sequence at index ${i} has length ${sequences[i].length}.`);
+                 }
+            }
+
+            const totalSize = batchSize * seqLength;
+            const seqData = new BigInt64Array(totalSize);
+            const sugarData = new BigInt64Array(totalSize);
+            const backboneData = new BigInt64Array(totalSize);
+
+            for (let b = 0; b < batchSize; ++b) {
+                const currentSeq = sequences[b].toUpperCase(); // Ensure uppercase
+                for (let i = 0; i < seqLength; ++i) {
+                    const idx = b * seqLength + i;
+                    const nucleotide = currentSeq[i];
+                    seqData[idx] = nucleotide_to_idx[nucleotide] !== undefined ? nucleotide_to_idx[nucleotide] : nucleotide_to_idx['N']; // Default to N if unknown
+                    sugarData[idx] = sugar_to_idx[sugarPattern[i]];
+                    backboneData[idx] = backbone_to_idx[backbonePattern[i]];
+                }
+            }
+
+            return { seqData, sugarData, backboneData, batchSize, seqLength };
+        }
+
+        // --- Standalone Prediction Function ---
+        /**
+         * Runs ONNX inference for a batch of sequences with shared sugar/backbone patterns.
+         * @param {string[]} sequences - Array of nucleotide sequence strings (ASOs).
+         * @param {Array<string|null>} sugarPattern - The sugar pattern list (applied to all sequences).
+         * @param {boolean[]} backbonePattern - The backbone pattern list (applied to all sequences).
+         * @param {string} modelPath - Path to the ONNX model file.
+         * @returns {Promise<number[]>} - A promise that resolves to an array of scores (floats).
+         */
+        async function oligo1(sequences, sugarPattern, backbonePattern, modelPath = './oligo_model.onnx') {
+            // Handle empty input gracefully - return empty scores array
+             if (!sequences || sequences.length === 0) {
+                console.log("oligo1 called with empty sequences array. Returning empty scores.");
+                return [];
+            }
+
+            let session;
+            try {
+                console.log('Creating ONNX session...');
+                // Consider caching the session if performance becomes an issue
+                session = await ort.InferenceSession.create(modelPath, {
+                    executionProviders: ['wasm'], // Use 'webgl' or 'webgpu' for potential acceleration
+                });
+
+                const { seqData, sugarData, backboneData, batchSize, seqLength } = prepareInputData(sequences, sugarPattern, backbonePattern);
+
+                 // Double check if prepareInputData resulted in zero batch size
+                 if (batchSize === 0) {
+                     console.log("Prepared data resulted in batch size 0. Returning empty scores.");
+                     return [];
+                 }
+
+                console.log(`Creating tensors with dimensions: [${batchSize}, ${seqLength}]`);
+                const dims = [batchSize, seqLength];
+                const seqTensor = new ort.Tensor('int64', seqData, dims);
+                const sugarTensor = new ort.Tensor('int64', sugarData, dims);
+                const backboneTensor = new ort.Tensor('int64', backboneData, dims);
+
+                const feeds = {
+                    'seq_input': seqTensor,
+                    'sugar_input': sugarTensor,
+                    'backbone_input': backboneTensor
+                };
+
+                console.log('Running ONNX inference...');
+                const results = await session.run(feeds);
+                console.log('Inference complete.');
+
+                const outputTensor = results.score; // Access the output named 'score'
+                if (!outputTensor) {
+                    throw new Error("Output tensor named 'score' not found in ONNX model results.");
+                }
+                console.log("Raw Output Tensor:", outputTensor);
+
+                // Convert Float32Array to standard Array<number>
+                const scores = Array.from(outputTensor.data);
+                console.log("Output Scores:", scores);
+
+                return scores;
+
+            } catch (e) {
+                // Log the original error object for more details
+                console.error(`Original error during ONNX prediction:`, e);
+                console.error(e.stack); // Log the stack trace too
+
+                // Re-throw the error ensuring the original message is included
+                throw new Error(`ONNX prediction failed: ${e.message || 'Unknown error'}`);
+            } finally {
+                // Optional: session release if needed, maybe less critical in browser context
+                // if (session) { /* await session.release(); ? */ } // Check ORT Web docs if needed
+            }
+        }
+        
+        /**
+         * Determines the region type (UTR, CDS, Exonic, Intronic) for an ASO target.
+         * @param {number} asoStartPos - 1-based genomic start coordinate of the ASO target.
+         * @param {number} asoLength - Length of the ASO target.
+         * @param {object} transcript - The transcript object containing exons, cds, utrs arrays.
+         * @returns {string} - Region description string.
+         */
+        function getAsoRegion(asoStartPos, asoLength, transcript) {
+            const asoEndPos = asoStartPos + asoLength - 1;
+            let overlapsExon = false;
+
+            // Helper to check overlap
+            const checkOverlap = (feature) => {
+                return Math.max(asoStartPos, feature.start) <= Math.min(asoEndPos, feature.end);
+            };
+
+            // Check for UTR overlap first (higher priority)
+            for (const utr of transcript.utrs) {
+                if (checkOverlap(utr)) {
+                    // Distinguish between 5' and 3' UTR based on GFF type
+                    return utr.type === 'five_prime_UTR' ? "5'UTR" : "3'UTR";
+                }
+            }
+
+            // Check for CDS overlap if no UTR overlap found
+            for (const cds of transcript.cds) {
+                if (checkOverlap(cds)) {
+                    return "Exonic (CDS)";
+                }
+            }
+
+            // Check for general exon overlap if no specific UTR/CDS overlap found
+            for (const exon of transcript.exons) {
+                 if (checkOverlap(exon)) {
+                     overlapsExon = true;
+                     break; // Found an overlap, no need to check further exons
+                 }
+            }
+
+            if (overlapsExon) {
+                 // Overlaps an exon, but not specifically marked as UTR or CDS
+                 return "Exonic";
+            } else {
+                 // Doesn't overlap any exon feature for this transcript
+                 return "Intronic";
+            }
+        }
+
+        /**
+         * Displays ASO sequences and their scores in a table, adding hover listeners.
+         * Attaches download functionality.
+         * @param {Array<object>} asoSequences - Array of ASO data objects.
+         * @param {string} chromosomeId - The chromosome ID (e.g., '11') to prepend to position.
+         * @param {string} transcriptName - The name of the transcript for the filename.
+         * @param {string} geneName - The name of the gene for the filename.
+         */
+        function displayASOTable(asoSequences, chromosomeId = '?', transcriptName = 'transcript', geneName = 'gene') {
+            const resultsContainer = document.getElementById('results-container');
+            const downloadLink = document.getElementById('download-aso-table');
+            const subtitleHeader = document.getElementById('aso-table-header'); // Get header element
+            resultsContainer.innerHTML = ''; // Clear previous results
+
+             if (!asoSequences || asoSequences.length === 0) {
+                 resultsContainer.textContent = "No valid ASO sequences to display.";
+                 resultsContainer.style.display = 'block';
+                 subtitleHeader.classList.add('hidden'); // Ensure header is hidden if no data
+                 return;
+             }
+
+            // Ensure chromosomeId starts with 'chr'
+            let displayChrId = String(chromosomeId); // Ensure it's a string
+            if (!displayChrId.toLowerCase().startsWith('chr')) {
+                displayChrId = 'chr' + displayChrId;
+            }
+
+            // --- Setup Table ---
+            const table = document.createElement('table');
+            table.style.width = '100%';
+            table.style.borderCollapse = 'collapse';
+
+            // --- Create Header Row ---
+            const headerRow = document.createElement('tr');
+            const headers = ['Genomic Coordinate', 'Region', 'Target Sequence', 'ASO Sequence', 'GC Content (%)', 'oligo-1 Score'];
+            headers.forEach(headerText => {
+                const header = document.createElement('th');
+                header.textContent = headerText;
+                headerRow.appendChild(header);
+            });
+            table.appendChild(headerRow);
+
+            // --- Add Data Rows ---
+            asoSequences.forEach(aso => {
+                const row = document.createElement('tr');
+                row.setAttribute('data-position', aso.position);
+
+                // Position Cell
+                const positionCell = document.createElement('td');
+                positionCell.textContent = `${displayChrId}:${aso.position}`;
+                row.appendChild(positionCell);
+
+                // Region Cell
+                const regionCell = document.createElement('td');
+                regionCell.textContent = aso.region || 'N/A';
+                row.appendChild(regionCell);
+
+                // Target Sequence Cell
+                const targetCell = document.createElement('td');
+                targetCell.textContent = aso.targetSequence;
+                targetCell.style.fontFamily = 'monospace';
+                row.appendChild(targetCell);
+
+                // ASO Sequence Cell (with bolding)
+                const asoCell = document.createElement('td');
+                let asoHtml = '';
+                if (currentSugarPattern && currentSugarPattern.length === aso.asoSequence.length) {
+                    for (let i = 0; i < aso.asoSequence.length; i++) {
+                        const base = aso.asoSequence[i];
+                        const sugar = currentSugarPattern[i];
+                        if (sugar === 'MOE' || sugar === 'cEt') {
+                            asoHtml += `<b>${base}</b>`;
+                        } else {
+                            asoHtml += base;
+                        }
+                    }
+                } else {
+                    console.warn("Sugar pattern mismatch or missing, cannot apply bold styling to ASO sequence.");
+                    asoHtml = aso.asoSequence;
+                }
+                asoCell.innerHTML = asoHtml;
+                asoCell.style.fontFamily = 'monospace';
+                row.appendChild(asoCell);
+
+                // GC Content Cell
+                const gcCell = document.createElement('td');
+                gcCell.textContent = aso.gcContent !== undefined ? aso.gcContent.toFixed(1) : 'N/A';
+                row.appendChild(gcCell);
+
+                // Score Cell
+                const scoreCell = document.createElement('td');
+                scoreCell.textContent = aso.score !== undefined ? aso.score.toFixed(4) : 'N/A';
+                row.appendChild(scoreCell);
+
+                // Add hover listeners
+                row.addEventListener('mouseover', () => {
+                    const pos = row.getAttribute('data-position');
+                    if (pos) {
+                        showMarkerOnPlot(parseInt(pos, 10));
+                    }
+                });
+                row.addEventListener('mouseout', () => {
+                    hideMarkerOnPlot();
+                });
+
+                table.appendChild(row);
+            });
+
+            // Append table and show container
+            resultsContainer.appendChild(table);
+            resultsContainer.style.display = 'block'; // Show results container
+
+            // NOW show the header with subtitle and icon
+            subtitleHeader.classList.remove('hidden');
+
+            // --- Setup Download Link ---
+            const csvData = asoSequences.map(aso => ({
+                 coordinate: `${displayChrId}:${aso.position}`,
+                 region: aso.region || 'N/A',
+                 target: aso.targetSequence,
+                 aso: aso.asoSequence, // Plain sequence for CSV
+                 gc: aso.gcContent !== undefined ? aso.gcContent.toFixed(1) : 'N/A',
+                 score: aso.score !== undefined ? aso.score.toFixed(4) : 'N/A'
+             }));
+
+             downloadLink.replaceWith(downloadLink.cloneNode(true));
+             const newDownloadLink = document.getElementById('download-aso-table');
+             newDownloadLink.addEventListener('click', (event) => {
+                 event.preventDefault();
+                 downloadCSV(headers, csvData, `${geneName}_${transcriptName}_ASOs.csv`);
+             });
+        }
+
+        /**
+         * Generates a CSV file from data and initiates download.
+         * @param {string[]} headers - Array of header strings.
+         * @param {Array<object>} data - Array of data objects (keys should match headers somewhat).
+         * @param {string} filename - The desired name for the downloaded file.
+         */
+        function downloadCSV(headers, data, filename) {
+             // Create CSV header row
+             const csvHeader = headers.join(',') + '\n';
+
+             // Create CSV data rows
+             const csvRows = data.map(row => {
+                 // Order data according to headers (more robust if keys don't match exactly)
+                 // This assumes the order of `csvData` properties matches `headers`
+                 // A more robust approach would map headers to object keys.
+                 return [
+                     row.coordinate,
+                     row.region,
+                     row.target,
+                     row.aso,
+                     row.gc,
+                     row.score
+                 ].join(',');
+             }).join('\n');
+
+             const csvContent = csvHeader + csvRows;
+
+             // Create Blob
+             const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+
+             // Create download link
+             const link = document.createElement('a');
+             if (link.download !== undefined) { // Check if download attribute is supported
+                 const url = URL.createObjectURL(blob);
+                 link.setAttribute('href', url);
+                 link.setAttribute('download', filename);
+                 link.style.visibility = 'hidden';
+                 document.body.appendChild(link);
+                 link.click();
+                 document.body.removeChild(link);
+                 URL.revokeObjectURL(url); // Clean up
+             } else {
+                 // Fallback for older browsers (might open in new window/tab)
+                 alert("CSV download is not fully supported in this browser.");
+                 // Consider navigator.msSaveBlob for IE
+             }
+        }
+
+        function showError(message) {
+            const errorElement = document.getElementById('error-message');
+            const subtitleHeader = document.getElementById('aso-table-header'); // Get header
+            errorElement.textContent = message;
+            errorElement.style.display = 'block';
+            // Hide loading indicators...
+            // Hide results container and header
+             document.getElementById('results-container').style.display = 'none';
+             subtitleHeader.classList.add('hidden'); // Use class
+        }
+
+        // Add a simple check for ONNX Runtime availability on load
+         window.addEventListener('load', () => {
+            if (typeof ort === 'undefined') {
+                showError('ONNX Runtime script failed to load. Please check your internet connection or the script URL.');
+                console.error('ONNX Runtime (ort) is not defined.');
+            } else {
+                console.log('ONNX Runtime loaded successfully.');
+            }
+         });
+
+        /**
+         * Parses GFF3 content into a structured object.
+         * @param {string} gffContent - The raw GFF3 text content.
+         * @returns {object|null} - Parsed data including gene info, transcripts, features, and bounds, or null if parsing fails.
+         */
+        function parseGFF3(gffContent) {
+            const lines = gffContent.split('\n');
+            const features = [];
+            let geneInfo = null;
+            let minCoord = Infinity;
+            let maxCoord = -Infinity;
+
+            for (const line of lines) {
+                if (line.startsWith('#') || line.trim() === '') continue; // Skip comments and empty lines
+
+                const columns = line.split('\t');
+                if (columns.length !== 9) {
+                    console.warn(`Skipping malformed GFF line: ${line}`);
+                    continue;
+                }
+
+                const [seqid, source, type, startStr, endStr, score, strand, phase, attributesStr] = columns;
+                const start = parseInt(startStr, 10);
+                const end = parseInt(endStr, 10);
+
+                if (isNaN(start) || isNaN(end)) {
+                    console.warn(`Skipping line with invalid coordinates: ${line}`);
+                    continue;
+                }
+
+                // Update overall min/max coordinates
+                minCoord = Math.min(minCoord, start);
+                maxCoord = Math.max(maxCoord, end);
+
+                // Parse attributes
+                const attributes = {};
+                attributesStr.split(';').forEach(attr => {
+                    const parts = attr.split('=');
+                    if (parts.length === 2) {
+                        attributes[parts[0].trim()] = parts[1].trim();
+                    }
+                });
+
+                const feature = {
+                    seqid, source, type, start, end, score, strand, phase,
+                    attributes,
+                    id: attributes.ID || null,
+                    parentId: attributes.Parent || null,
+                    name: attributes.Name || null
+                };
+
+                features.push(feature);
+
+                // Capture the main gene feature if present
+                if (type === 'gene' && !geneInfo) {
+                    geneInfo = feature;
+                }
+            }
+
+            if (features.length === 0) {
+                 console.warn("No valid features found in GFF content.");
+                 return null; // No data parsed
+            }
+
+            // Organize features by transcript
+            const transcripts = {};
+            features.forEach(feature => {
+                // Find top-level features (mRNA, lnc_RNA, etc.) that act as parents
+                if (['mRNA', 'transcript', 'lnc_RNA', 'primary_transcript'].includes(feature.type) && feature.id) {
+                    // Check for canonical tags
+                    const tags = feature.attributes.tag ? feature.attributes.tag.split(',') : [];
+                    const isCanonical = tags.includes('Ensembl_canonical') || tags.includes('MANE_Select');
+
+                    if (!transcripts[feature.id]) {
+                        // Add isCanonical flag when creating transcript object
+                        transcripts[feature.id] = { ...feature, exons: [], cds: [], utrs: [], isCanonical: isCanonical };
+                    } else {
+                        // Update existing transcript entry if needed
+                        Object.assign(transcripts[feature.id], feature);
+                        // Ensure canonical flag is set if feature is updated later
+                        if (isCanonical) {
+                            transcripts[feature.id].isCanonical = true;
+                        }
+                    }
+                }
+            });
+
+            // Assign children (exons, CDS, UTRs) to their parent transcripts
+            features.forEach(feature => {
+                if (feature.parentId && transcripts[feature.parentId]) {
+                    const parent = transcripts[feature.parentId];
+                    switch (feature.type) {
+                        case 'exon':
+                            parent.exons.push(feature);
+                            break;
+                        case 'CDS':
+                            parent.cds.push(feature);
+                            break;
+                        case 'five_prime_UTR':
+                        case 'three_prime_UTR':
+                            parent.utrs.push(feature);
+                            break;
+                        // Add other feature types if needed
+                    }
+                }
+            });
+            
+             // Sort exons/CDS/UTRs within each transcript by start position
+             Object.values(transcripts).forEach(t => {
+                 t.exons.sort((a, b) => a.start - b.start);
+                 t.cds.sort((a, b) => a.start - b.start);
+                 t.utrs.sort((a, b) => a.start - b.start);
+             });
+
+            return {
+                gene: geneInfo,
+                transcripts: Object.values(transcripts), // Return as an array
+                allFeatures: features,
+                minCoord: minCoord !== Infinity ? minCoord : 0,
+                maxCoord: maxCoord !== -Infinity ? maxCoord : 0,
+            };
+        }
+
+        /**
+         * Renders transcript structures as an SVG plot with interaction.
+         * Stores plot parameters globally for marker placement.
+         * @param {object} gffData - Parsed GFF data from parseGFF3.
+         * @param {SVGElement} svgElement - The SVG element to draw into.
+         */
+        function renderTranscripts(gffData, svgElement) {
+            if (!gffData || !gffData.transcripts || gffData.transcripts.length === 0) {
+                svgElement.innerHTML = '<text x="10" y="20">No transcript data to display.</text>';
+                return;
+            }
+
+            svgElement.innerHTML = ''; // Clear previous content
+
+            // --- Update Plot Title ---
+            const plotTitleElement = document.getElementById('transcript-plot-title');
+            if (gffData.gene && gffData.gene.name) {
+                plotTitleElement.textContent = `${gffData.gene.name} transcripts`;
+            } else {
+                 plotTitleElement.textContent = 'Transcript Structure'; // Fallback
+            }
+
+
+            // --- Sort Transcripts ---
+            const transcripts = gffData.transcripts.sort((a, b) => {
+                // Prioritize canonical transcript (true comes before false/undefined)
+                if (a.isCanonical && !b.isCanonical) return -1;
+                if (!a.isCanonical && b.isCanonical) return 1;
+                // Optional: Secondary sort by name or position if needed
+                return (a.name || a.id).localeCompare(b.name || b.id);
+            });
+
+            const minCoord = gffData.minCoord; 
+            const maxCoord = gffData.maxCoord;
+            const totalRange = maxCoord - minCoord;
+
+            // --- SVG Setup ---
+            const padding = { top: 50, right: 20, bottom: 40, left: 100 }; // Inc top padding for axis/gene name
+            const svgWidth = svgElement.clientWidth || 800; // Use clientWidth or default
+            const plotWidth = svgWidth - padding.left - padding.right;
+            const transcriptHeight = 20; // Height for each transcript track (visual height)
+            const featureHeight = 10;    // Height of UTR rectangles
+            const cdsHeight = 14;       // Height of CDS rectangles
+            const trackSpacing = 15;    // Vertical space between transcript tracks
+            const svgHeight = padding.top + padding.bottom + (transcripts.length * (transcriptHeight + trackSpacing));
+            svgElement.setAttribute('height', svgHeight);
+            svgElement.setAttribute('viewBox', `0 0 ${svgWidth} ${svgHeight}`); // Make responsive
+
+            // --- Store Plot Parameters Globally ---
+            // We store them within the currentGffData object
+            gffData.plotParams = {
+                minCoord,
+                maxCoord,
+                totalRange,
+                padding,
+                plotWidth,
+                // The scaleX function itself, capturing necessary variables
+                scaleX: function(coord) {
+                    if (this.totalRange <= 0 || this.plotWidth <= 0) return this.padding.left;
+                    return this.padding.left + ((coord - this.minCoord) / this.totalRange) * this.plotWidth;
+                },
+                axisY: padding.top - 25 // Store axis Y position for marker placement
+            };
+
+            // Local scaleX function for convenience within this render function
+            const scaleX = (coord) => gffData.plotParams.scaleX(coord);
+
+            // --- Draw Axis/Ruler ---
+             const axisY = gffData.plotParams.axisY;
+             const axisLine = document.createElementNS(svgNS, 'line');
+             axisLine.setAttribute('x1', scaleX(minCoord));
+             axisLine.setAttribute('y1', axisY);
+             axisLine.setAttribute('x2', scaleX(maxCoord));
+             axisLine.setAttribute('y2', axisY);
+             axisLine.setAttribute('stroke', '#ccc');
+             svgElement.appendChild(axisLine);
+
+             // Add Axis Labels (Start and End)
+             const startLabel = document.createElementNS(svgNS, 'text');
+             startLabel.setAttribute('x', scaleX(minCoord));
+             startLabel.setAttribute('y', axisY - 5);
+             startLabel.setAttribute('font-size', '10px');
+             startLabel.setAttribute('text-anchor', 'start');
+             startLabel.textContent = minCoord.toLocaleString();
+             svgElement.appendChild(startLabel);
+
+             const endLabel = document.createElementNS(svgNS, 'text');
+             endLabel.setAttribute('x', scaleX(maxCoord));
+             endLabel.setAttribute('y', axisY - 5);
+             endLabel.setAttribute('font-size', '10px');
+             endLabel.setAttribute('text-anchor', 'end');
+             endLabel.textContent = maxCoord.toLocaleString();
+             svgElement.appendChild(endLabel);
+
+             // --- Modify Gene/Chromosome Label near axis ---
+             if (gffData.gene && gffData.gene.seqid) {
+                 const geneLabel = document.createElementNS(svgNS, 'text');
+                 const midPoint = padding.left + plotWidth / 2;
+                 geneLabel.setAttribute('x', midPoint);
+                 geneLabel.setAttribute('y', axisY - 15); // Above axis line
+                 geneLabel.setAttribute('font-size', '12px');
+                 geneLabel.setAttribute('font-weight', 'bold');
+                 geneLabel.setAttribute('text-anchor', 'middle');
+                 // Format chromosome ID
+                 let displayChrId = String(gffData.gene.seqid);
+                 if (!displayChrId.toLowerCase().startsWith('chr')) {
+                     displayChrId = 'chr' + displayChrId;
+                 }
+                 geneLabel.textContent = displayChrId; // Set text to chr{chromosome}
+                 svgElement.appendChild(geneLabel);
+             }
+
+
+            // --- Draw Transcripts ---
+            transcripts.forEach((transcript, index) => {
+                 // Create a group for each transcript row
+                 const group = document.createElementNS(svgNS, 'g');
+                 group.classList.add('transcript-row');
+                 group.setAttribute('data-transcript-id', transcript.id); // Store transcript ID for click handler
+                 svgElement.appendChild(group);
+
+                const yBase = padding.top + index * (transcriptHeight + trackSpacing);
+                const yCenter = yBase + transcriptHeight / 2;
+
+                // --- Add elements to the group ---
+
+                // Draw Transcript Label - Add (canonical) text
+                const label = document.createElementNS(svgNS, 'text');
+                label.setAttribute('x', padding.left - 10); // Position left of the plot area
+                label.setAttribute('y', yCenter + 4); // Vertically center with feature
+                label.setAttribute('font-size', '10px');
+                label.setAttribute('text-anchor', 'end');
+                let labelText = transcript.name || transcript.id.split(':')[1] || `Transcript ${index + 1}`; // Use name or ID part
+                if (transcript.isCanonical) {
+                    label.setAttribute('font-weight', 'bold'); // Optionally make canonical bold
+                }
+                label.textContent = labelText;
+                group.appendChild(label); // Add to group
+
+                // Draw Intron Line (connecting exons)
+                 let intronLine = null; // Keep reference if needed
+                 if (transcript.exons.length > 1) {
+                     intronLine = document.createElementNS(svgNS, 'line');
+                     // Calculate start/end based on actual exon features, not transcript overall range
+                     const firstExonStart = scaleX(transcript.exons[0].start);
+                     const lastExonEnd = scaleX(transcript.exons[transcript.exons.length - 1].end);
+                     intronLine.setAttribute('x1', firstExonStart);
+                     intronLine.setAttribute('y1', yCenter);
+                     intronLine.setAttribute('x2', lastExonEnd);
+                     intronLine.setAttribute('y2', yCenter);
+                     intronLine.setAttribute('stroke', '#999');
+                     group.appendChild(intronLine); // Add to group
+                 } else if (transcript.exons.length === 1) {
+                      // Draw single line for single-exon transcript
+                      const exonLine = document.createElementNS(svgNS, 'line');
+                      const exonStart = scaleX(transcript.exons[0].start);
+                      const exonEnd = scaleX(transcript.exons[0].end);
+                      exonLine.setAttribute('x1', exonStart);
+                      exonLine.setAttribute('y1', yCenter);
+                      exonLine.setAttribute('x2', exonEnd);
+                      exonLine.setAttribute('y2', yCenter);
+                      exonLine.setAttribute('stroke', '#999'); // Or a different color
+                      group.appendChild(exonLine); // Add to group
+                 }
+
+
+                // Draw UTRs (thinner rectangles)
+                transcript.utrs.forEach(utr => {
+                    const x = scaleX(utr.start);
+                    const width = Math.max(1, scaleX(utr.end) - x);
+                    if (width <= 0) return; // Skip zero-width features
+                    const rect = document.createElementNS(svgNS, 'rect');
+                    rect.setAttribute('x', x);
+                    rect.setAttribute('y', yCenter - featureHeight / 2);
+                    rect.setAttribute('width', width);
+                    rect.setAttribute('height', featureHeight);
+                    rect.setAttribute('fill', '#a9a9a9'); // Darker grey for UTR
+                    rect.setAttribute('stroke', '#808080');
+                    group.appendChild(rect); // Add to group
+                });
+
+                // Draw CDS (thicker rectangles, overlaying UTRs if needed)
+                transcript.cds.forEach(cds => {
+                    const x = scaleX(cds.start);
+                    const width = Math.max(1, scaleX(cds.end) - x);
+                     if (width <= 0) return; // Skip zero-width features
+                    const rect = document.createElementNS(svgNS, 'rect');
+                    rect.setAttribute('x', x);
+                    rect.setAttribute('y', yCenter - cdsHeight / 2); // Center the thicker CDS
+                    rect.setAttribute('width', width);
+                    rect.setAttribute('height', cdsHeight);
+                    rect.setAttribute('fill', '#007bff'); // Updated Blue for CDS
+                    rect.setAttribute('stroke', '#0056b3');
+                    group.appendChild(rect); // Add to group
+                });
+
+                // Add strand indicator (chevrons on intron line)
+                 if (transcript.exons.length > 1 && transcript.strand && plotWidth > 50) {
+                       const arrowSize = 4;
+                       // Draw chevrons within each intron segment
+                       for (let i = 0; i < transcript.exons.length - 1; i++) {
+                           const intronStartCoord = transcript.exons[i].end;
+                           const intronEndCoord = transcript.exons[i+1].start;
+                           // Ensure coordinates are ordered correctly if exons are reversed (shouldn't happen with sorting)
+                           const startCoord = Math.min(intronStartCoord, intronEndCoord);
+                           const endCoord = Math.max(intronStartCoord, intronEndCoord);
+
+                           const intronStartX = scaleX(startCoord);
+                           const intronEndX = scaleX(endCoord);
+                           const intronLength = intronEndX - intronStartX;
+
+                           if (intronLength < 15) continue; // Skip drawing arrows if intron is too small
+
+                           const numArrows = Math.max(1, Math.floor(intronLength / 30)); // Arrows approx every 30px
+                           for (let j = 1; j <= numArrows; j++) {
+                                 const arrowX = intronStartX + (intronLength * j / (numArrows + 1));
+                                 const chevron = document.createElementNS(svgNS, 'polyline');
+                                 let points;
+                                 const yTop = yCenter - arrowSize;
+                                 const yBottom = yCenter + arrowSize;
+                                 if (transcript.strand === '+') {
+                                     // Draw > shape
+                                     points = `${arrowX - arrowSize},${yTop} ${arrowX},${yCenter} ${arrowX - arrowSize},${yBottom}`;
+                                 } else { // strand === '-'
+                                     // Draw < shape
+                                     points = `${arrowX + arrowSize},${yTop} ${arrowX},${yCenter} ${arrowX + arrowSize},${yBottom}`;
+                                 }
+                                 chevron.setAttribute('points', points);
+                                 chevron.setAttribute('fill', 'none');
+                                 chevron.setAttribute('stroke', '#555');
+                                 chevron.setAttribute('stroke-width', '1');
+                                 group.appendChild(chevron); // Add to group
+                            }
+                       }
+                 }
+
+                 // --- Add Interaction Listeners to the Group ---
+                 group.addEventListener('mouseover', () => {
+                    if (!group.classList.contains('selected')) {
+                        group.classList.add('hover-highlight');
+                    }
+                 });
+                 group.addEventListener('mouseout', () => {
+                     group.classList.remove('hover-highlight');
+                 });
+
+                 group.addEventListener('click', () => {
+                     console.log(`Transcript clicked: ${transcript.id}`);
+                     const clickedTranscriptData = currentGffData?.transcripts.find(t => t.id === transcript.id);
+                     if (clickedTranscriptData && currentSequence && currentGffData?.gene) {
+                         svgElement.querySelectorAll('.transcript-row.selected').forEach(el => el.classList.remove('selected'));
+                         svgElement.querySelectorAll('.transcript-row.hover-highlight').forEach(el => el.classList.remove('hover-highlight'));
+                         group.classList.add('selected');
+
+                         generateASOsForTranscript(currentSequence, clickedTranscriptData, currentGffData.gene);
+                     } else {
+                         console.error("Missing data needed to generate ASOs for transcript:", transcript.id);
+                         showError("Could not generate ASOs: required data missing.");
+                     }
+                 });
+
+
+            });
+        }
+
+        // Generates ASOs specifically for a transcript using GLOBAL chemistry settings
+        async function generateASOsForTranscript(sequence, transcript, gene) {
+            const asoLengthToUse = currentAsoLength;
+            const sugarPatternToUse = currentSugarPattern;
+            const backbonePatternToUse = currentBackbonePattern;
+
+            const transcriptName = transcript.name || transcript.id.split(':')[1] || transcript.id; // Get best name
+            const geneName = gene.name || 'UnknownGene'; // Get gene name
+            console.log(`Generating ASOs for ${transcriptName} (Length: ${asoLengthToUse}, Genomic Range: ${transcript.start}-${transcript.end}, Strand: ${gene.strand})`);
+
+            const loadingElement = document.getElementById('loading');
+            const resultsContainer = document.getElementById('results-container');
+            const errorElement = document.getElementById('error-message');
+            const subtitleHeader = document.getElementById('aso-table-header'); // Get header
+            const subtitleElement = document.getElementById('aso-table-subtitle');
+            const downloadLink = document.getElementById('download-aso-table'); // Get link
+
+            // Show loading indicator
+            loadingElement.textContent = `Generating ASOs for ${transcriptName}...`;
+            loadingElement.style.display = 'block';
+            resultsContainer.style.display = 'none';
+            resultsContainer.innerHTML = '';
+            subtitleHeader.classList.add('hidden'); // Use class
+            errorElement.style.display = 'none';
+
+            try {
+                if (!sequence || !transcript || !gene || !transcript.exons) {
+                    throw new Error("Missing sequence, transcript, gene data, or transcript features.");
+                }
+                if (asoLengthToUse <= 0 || sugarPatternToUse.length !== asoLengthToUse || backbonePatternToUse.length !== asoLengthToUse) {
+                    throw new Error("Invalid ASO design parameters (length/sugar/backbone). Please check chemistry input.");
+                }
+
+                const seqLen = sequence.length;
+                const geneStart = gene.start;
+                const geneEnd = gene.end;
+                const geneStrand = gene.strand;
+
+                // Calculate the start and end indices within the sequence string
+                // corresponding to the transcript's genomic coordinates.
+                let transcriptSeqStartIndex;
+                let transcriptSeqEndIndex;
+
+                if (geneStrand === '+') {
+                    // For positive strand, sequence index = genomic_coord - gene_start
+                    transcriptSeqStartIndex = transcript.start - geneStart;
+                    // End index is exclusive in substring, but inclusive in GFF.
+                    // We want the index *after* the last base of the transcript.
+                    transcriptSeqEndIndex = transcript.end - geneStart + 1;
+                } else { // geneStrand === '-'
+                    // For negative strand, sequence index = gene_end - genomic_coord
+                    // Sequence start corresponds to transcript's genomic end
+                    transcriptSeqStartIndex = geneEnd - transcript.end;
+                    // Sequence end corresponds to transcript's genomic start
+                    transcriptSeqEndIndex = geneEnd - transcript.start + 1;
+                }
+
+                // Clamp indices to be within the sequence bounds
+                transcriptSeqStartIndex = Math.max(0, transcriptSeqStartIndex);
+                transcriptSeqEndIndex = Math.min(seqLen, transcriptSeqEndIndex);
+
+                console.log(`Sequence length: ${seqLen}`);
+                console.log(`Transcript sequence indices: [${transcriptSeqStartIndex}, ${transcriptSeqEndIndex})`);
+
+                if (transcriptSeqStartIndex >= transcriptSeqEndIndex || transcriptSeqEndIndex - transcriptSeqStartIndex < asoLengthToUse) {
+                     showError(`Transcript region (${transcriptName}) is too short or invalid within the sequence to generate ASOs of length ${asoLengthToUse}.`);
+                     loadingElement.style.display = 'none';
+                     subtitleHeader.classList.add('hidden'); // Ensure hidden on error
+                     return;
+                }
+
+                const asoDataList = [];
+                // Iterate using dynamic length
+                for (let i = transcriptSeqStartIndex; i <= transcriptSeqEndIndex - asoLengthToUse; i++) {
+                    const subseq = sequence.substring(i, i + asoLengthToUse); // Use dynamic length
+                    const aso = createComplement(subseq);
+
+                    if (!aso.includes('N')) {
+                        const gcContent = calculateGCContent(aso);
+                        let genomicPosition;
+
+                        if (geneStrand === '+') {
+                            genomicPosition = geneStart + i + 1;
+                        } else {
+                            genomicPosition = geneEnd - (i + asoLengthToUse - 1); // Use dynamic length
+                        }
+
+                        const region = getAsoRegion(genomicPosition, asoLengthToUse, transcript); // Use dynamic length
+
+                        asoDataList.push({
+                            position: genomicPosition,
+                            targetSequence: subseq,
+                            asoSequence: aso,
+                            gcContent: gcContent,
+                            region: region
+                        });
+                    }
+                }
+
+                if (asoDataList.length === 0) {
+                    showError(`No valid ASO sequences could be generated for transcript ${transcriptName} (check for N's or transcript length).`);
+                    loadingElement.style.display = 'none';
+                    resultsContainer.style.display = 'none';
+                    subtitleHeader.classList.add('hidden'); // Ensure hidden on error
+                    return;
+                }
+
+                loadingElement.textContent = `Running oligo-1 for ${asoDataList.length} ASOs...`;
+
+                const asoStrings = asoDataList.map(aso => aso.asoSequence);
+                const totalASOs = asoStrings.length;
+                let allScores = [];
+                let processedCount = 0;
+
+                console.log(`Starting ONNX inference for ${totalASOs} sequences in batches of ${batchSizeForONNX}`);
+                for (let i = 0; i < totalASOs; i += batchSizeForONNX) {
+                    const batchEnd = Math.min(i + batchSizeForONNX, totalASOs);
+                    const batchNumber = Math.floor(i / batchSizeForONNX) + 1;
+                    const totalBatches = Math.ceil(totalASOs / batchSizeForONNX);
+                    const currentBatchSize = batchEnd - i;
+
+                    console.log(`Processing batch ${batchNumber}/${totalBatches} (Indices ${i} to ${batchEnd - 1}), size ${currentBatchSize}`);
+                    const currentBatchStrings = asoStrings.slice(i, batchEnd);
+                    const batchScores = await oligo1(currentBatchStrings, sugarPatternToUse, backbonePatternToUse);
+
+                    if (batchScores && batchScores.length === currentBatchSize) {
+                        allScores = allScores.concat(batchScores);
+                        processedCount += currentBatchSize;
+                        loadingElement.textContent = `Processed ${processedCount}/${totalASOs} sequences...`;
+                    } else {
+                        throw new Error(`ONNX prediction failed or returned incorrect number of scores for batch ${batchNumber}. Expected ${currentBatchSize}, got ${batchScores?.length ?? 0}.`);
+                    }
+                    console.log(`Batch ${batchNumber} complete. Total processed: ${processedCount}/${totalASOs}`);
+                }
+
+                 if (allScores.length !== totalASOs || processedCount !== totalASOs) {
+                    throw new Error(`Mismatch in final score count: Expected ${totalASOs}, but received ${allScores.length} scores (${processedCount} processed).`);
+                 }
+
+                // Add scores to the ASO data
+                asoDataList.forEach((aso, index) => {
+                    aso.score = allScores[index];
+                });
+
+                // Sort the ASO sequences by score in descending order
+                loadingElement.textContent = 'Sorting results...';
+                console.log("Sorting ASO sequences by score (descending)...");
+                asoDataList.sort((a, b) => b.score - a.score);
+
+                loadingElement.textContent = 'Displaying results...';
+                subtitleElement.textContent = `ASOs targeting ${transcriptName}`;
+
+                displayASOTable(asoDataList, gene.seqid || '?', transcriptName, geneName);
+
+            } catch (error) {
+                console.error(`Error generating ASOs for transcript ${transcriptName}:`, error);
+                showError(`Failed to generate ASOs for ${transcriptName}: ${error.message}`);
+                resultsContainer.style.display = 'none';
+                subtitleHeader.classList.add('hidden'); // Ensure hidden on error
+            } finally {
+                loadingElement.style.display = 'none';
+            }
+        }
+
+        /**
+         * Shows a marker (asterisk) on the transcript plot at the given genomic position.
+         * @param {number} position - The genomic coordinate.
+         */
+        function showMarkerOnPlot(position) {
+            hideMarkerOnPlot(); // Remove any existing marker first
+
+            const svgElement = document.getElementById('transcript-plot-svg');
+            // Check if plot parameters are available (plot must have been rendered)
+            if (!svgElement || !currentGffData?.plotParams) {
+                console.warn("Cannot show marker: SVG plot or parameters not ready.");
+                return;
+            }
+
+            const plotParams = currentGffData.plotParams;
+
+             // Check if position is within the plotted range
+             if (position < plotParams.minCoord || position > plotParams.maxCoord) {
+                 console.log(`Marker position ${position} is outside plot range [${plotParams.minCoord}, ${plotParams.maxCoord}]`);
+                 return; // Don't draw marker if outside range
+             }
+
+
+            const x = plotParams.scaleX(position); // Use the stored scaleX function
+            const y = plotParams.axisY; // Position directly ON the axis line
+            const lineLength = 8; // Half-length of each asterisk line
+            const desiredStrokeWidth = '2'; // Define the desired thickness
+
+            // Create a group for the asterisk lines - still useful for ID and pointer-events
+            const asteriskGroup = document.createElementNS(svgNS, 'g');
+            asteriskGroup.setAttribute('id', 'aso-hover-marker'); // ID for easy removal
+            // Removed stroke and stroke-width from group
+
+            // Define angles for the 3 lines (0, 60, 120 degrees) in radians
+            const angles = [
+                Math.PI / 2,         // 90 degrees (vertical)
+                Math.PI / 6,         // 30 degrees
+                5 * Math.PI / 6      // 150 degrees
+            ];
+
+            // Create the 3 lines for the asterisk
+            angles.forEach(angle => {
+                const line = document.createElementNS(svgNS, 'line');
+                const x1 = x - lineLength * Math.cos(angle);
+                const y1 = y - lineLength * Math.sin(angle);
+                const x2 = x + lineLength * Math.cos(angle);
+                const y2 = y + lineLength * Math.sin(angle);
+                line.setAttribute('x1', x1);
+                line.setAttribute('y1', y1);
+                line.setAttribute('x2', x2);
+                line.setAttribute('y2', y2);
+                // Apply stroke properties directly to the line
+                line.setAttribute('stroke', 'red');
+                line.setAttribute('stroke-width', desiredStrokeWidth); // Apply width here
+                asteriskGroup.appendChild(line);
+            });
+
+            // Add pointer-events: none directly to the group
+             asteriskGroup.setAttribute('pointer-events', 'none');
+
+            svgElement.appendChild(asteriskGroup);
+        }
+
+        /**
+         * Hides the ASO hover marker from the transcript plot.
+         */
+        function hideMarkerOnPlot() {
+            const existingMarker = document.getElementById('aso-hover-marker');
+            if (existingMarker) {
+                existingMarker.remove();
+            }
+        }
+
+        // --- Popup Logic ---
+        const aboutLink = document.getElementById('about-link');
+        const closePopupButton = document.getElementById('close-popup');
+        const aboutPopup = document.getElementById('about-popup');
+        const popupOverlay = document.getElementById('popup-overlay');
+
+        function showPopup() {
+            aboutPopup.classList.remove('hidden');
+            popupOverlay.classList.remove('hidden');
+        }
+
+        function hidePopup() {
+            aboutPopup.classList.add('hidden');
+            popupOverlay.classList.add('hidden');
+        }
+
+        aboutLink.addEventListener('click', (event) => {
+            event.preventDefault(); // Prevent default link behavior
+            showPopup();
+        });
+
+        closePopupButton.addEventListener('click', hidePopup);
+
+        // Optional: Close popup when clicking on the overlay
+        popupOverlay.addEventListener('click', hidePopup);
+
+    </script>
+</body>
+</html>
