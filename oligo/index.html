@@ -1010,77 +1010,91 @@
             return { seqData, sugarData, backboneData, batchSize, seqLength };
         }
 
-        // --- Standalone Prediction Function ---
+        // --- Modified Prediction Function using Web Workers ---
         /**
-         * Runs ONNX inference for a batch of sequences with shared sugar/backbone patterns.
+         * Runs ONNX inference for a batch of sequences in a Web Worker.
          * @param {string[]} sequences - Array of nucleotide sequence strings (ASOs).
-         * @param {Array<string|null>} sugarPattern - The sugar pattern list (applied to all sequences).
-         * @param {boolean[]} backbonePattern - The backbone pattern list (applied to all sequences).
+         * @param {Array<string|null>} sugarPattern - The sugar pattern list.
+         * @param {boolean[]} backbonePattern - The backbone pattern list.
          * @param {string} modelPath - Path to the ONNX model file.
          * @returns {Promise<number[]>} - A promise that resolves to an array of scores (floats).
          */
         async function oligo1(sequences, sugarPattern, backbonePattern, modelPath = './oligo_model.onnx') {
-            // Handle empty input gracefully - return empty scores array
-             if (!sequences || sequences.length === 0) {
-                console.log("oligo1 called with empty sequences array. Returning empty scores.");
-                return [];
-            }
-
-            let session;
-            try {
-                console.log('Creating ONNX session...');
-                // Consider caching the session if performance becomes an issue
-                session = await ort.InferenceSession.create(modelPath, {
-                    executionProviders: ['wasm'], // Use 'webgl' or 'webgpu' for potential acceleration
-                });
-
-                const { seqData, sugarData, backboneData, batchSize, seqLength } = prepareInputData(sequences, sugarPattern, backbonePattern);
-
-                 // Double check if prepareInputData resulted in zero batch size
-                 if (batchSize === 0) {
-                     console.log("Prepared data resulted in batch size 0. Returning empty scores.");
-                     return [];
-                 }
-
-                console.log(`Creating tensors with dimensions: [${batchSize}, ${seqLength}]`);
-                const dims = [batchSize, seqLength];
-                const seqTensor = new ort.Tensor('int64', seqData, dims);
-                const sugarTensor = new ort.Tensor('int64', sugarData, dims);
-                const backboneTensor = new ort.Tensor('int64', backboneData, dims);
-
-                const feeds = {
-                    'seq_input': seqTensor,
-                    'sugar_input': sugarTensor,
-                    'backbone_input': backboneTensor
-                };
-
-                console.log('Running ONNX inference...');
-                const results = await session.run(feeds);
-                console.log('Inference complete.');
-
-                const outputTensor = results.score; // Access the output named 'score'
-                if (!outputTensor) {
-                    throw new Error("Output tensor named 'score' not found in ONNX model results.");
+            return new Promise((resolve, reject) => {
+                // Handle empty input gracefully - return empty scores array
+                 if (!sequences || sequences.length === 0) {
+                    console.log("oligo1 called with empty sequences array. Returning empty scores.");
+                    resolve([]);
+                    return;
                 }
-                console.log("Raw Output Tensor:", outputTensor);
 
-                // Convert Float32Array to standard Array<number>
-                const scores = Array.from(outputTensor.data);
-                console.log("Output Scores:", scores);
+                let worker = null;
 
-                return scores;
+                try {
+                    console.log('Preparing data for worker...');
+                    const { seqData, sugarData, backboneData, batchSize, seqLength } = prepareInputData(sequences, sugarPattern, backbonePattern);
 
-            } catch (e) {
-                // Log the original error object for more details
-                console.error(`Original error during ONNX prediction:`, e);
-                console.error(e.stack); // Log the stack trace too
+                    // Double check if prepareInputData resulted in zero batch size
+                     if (batchSize === 0) {
+                         console.log("Prepared data resulted in batch size 0. Returning empty scores.");
+                         resolve([]);
+                         return;
+                     }
 
-                // Re-throw the error ensuring the original message is included
-                throw new Error(`ONNX prediction failed: ${e.message || 'Unknown error'}`);
-            } finally {
-                // Optional: session release if needed, maybe less critical in browser context
-                // if (session) { /* await session.release(); ? */ } // Check ORT Web docs if needed
-            }
+                    console.log('Creating ONNX worker...');
+                    worker = new Worker('onnx-worker.js'); // Path to your worker script
+
+                    // --- Setup Worker Communication ---
+                    worker.onmessage = (event) => {
+                        // console.log("[Main] Message received from worker:", event.data);
+                        if (event.data.success) {
+                            console.log("[Main] Worker finished successfully.");
+                            resolve(event.data.scores);
+                        } else {
+                            console.error("[Main] Worker reported error:", event.data.error);
+                            reject(new Error(event.data.error));
+                        }
+                        // Crucially, terminate the worker once done
+                        console.log("[Main] Terminating worker.");
+                        worker.terminate();
+                    };
+
+                    worker.onerror = (error) => {
+                        console.error("[Main] Error in worker:", error);
+                        reject(new Error(`Worker error: ${error.message}`));
+                        // Terminate worker on error too
+                        if (worker) {
+                             console.log("[Main] Terminating worker due to error.");
+                             worker.terminate();
+                        }
+                    };
+
+                     worker.onmessageerror = (event) => {
+                         console.error("[Main] Message error from worker:", event);
+                         reject(new Error("Failed to deserialize message from worker."));
+                         if (worker) {
+                              console.log("[Main] Terminating worker due to message error.");
+                              worker.terminate();
+                         }
+                     };
+
+                    // --- Send Data to Worker (Transferring Buffers) ---
+                    console.log('Sending data to worker (transferring buffers)...');
+                    const messageData = { seqData, sugarData, backboneData, batchSize, seqLength, modelPath };
+                    // Transfer the ArrayBuffers to avoid copying large data
+                    worker.postMessage(messageData, [seqData.buffer, sugarData.buffer, backboneData.buffer]);
+                    console.log('Data sent to worker.');
+
+                } catch (e) {
+                    console.error(`Error setting up or communicating with worker:`, e);
+                    reject(new Error(`Worker setup/communication failed: ${e.message || 'Unknown error'}`));
+                    // Ensure worker is terminated if created before the error
+                    if (worker) {
+                         console.log("[Main] Terminating worker due to setup error.");
+                         worker.terminate();
+                    }
+                }
+            });
         }
         
         /**
