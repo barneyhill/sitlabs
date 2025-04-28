@@ -64,18 +64,13 @@
         }
 
         /* Container for the chemistry options row */
-        .chemistry-option { 
-            display: none; /* Hidden by default */
+        .chemistry-option {
+            display: flex; /* Always display as flex */
             flex-basis: 100%; /* Take full width when visible */
-            margin-top: 15px; /* Add space above when visible */
             gap: 15px; /* Gap between sugar and backbone groups */
             width: 100%; /* Ensure it spans full width for internal flex items */
         }
 
-        .chemistry-option.visible {
-            display: flex; /* Show as a flex row when visible */
-        }
-        
         /* Groups for label+input pairs */
         #sugar-input-group, 
         #backbone-input-group {
@@ -177,7 +172,7 @@
             /* No margin needed here */
         }
         #search-button {
-            margin-left: auto; /* Push this button and the gear button to the right */
+            margin-left: auto; /* Keep search button pushed right */
         }
          
         #search-button:hover {
@@ -476,11 +471,12 @@
             <p class="subtitle">Design effective antisense oligonucleotides</p>
             <div id="search-controls">
                 <input type="text" id="gene-search" placeholder="Enter gene name... (HUGO format e.g. 'FGFR3')" value="FGFR3">
-                
+
                 <button id="search-button">Search</button>
-                <button id="toggle-chemistry-options" title="Toggle Chemistry Options">
+                <!-- REMOVE this button -->
+                <!-- <button id="toggle-chemistry-options" title="Toggle Chemistry Options">
                     <i class="fa-solid fa-gear"></i>
-                </button>
+                </button> -->
 
                 <!-- Wrapper for both chemistry options -->
                 <div id="chemistry-options-wrapper" class="chemistry-option"> 
@@ -1504,21 +1500,25 @@
                 return (a.name || a.id).localeCompare(b.name || b.id);
             });
 
-            const minCoord = gffData.minCoord; 
+            const minCoord = gffData.minCoord;
             const maxCoord = gffData.maxCoord;
             const totalRange = maxCoord - minCoord;
 
             // --- SVG Setup ---
-            const padding = { top: 50, right: 20, bottom: 40, left: 100 }; // Inc top padding for axis/gene name
+            const padding = { top: 20, right: 20, bottom: 50, left: 100 }; // Reduced top padding, increased bottom
             const svgWidth = svgElement.clientWidth || 800; // Use clientWidth or default
             const plotWidth = svgWidth - padding.left - padding.right;
             const transcriptHeight = 20; // Height for each transcript track (visual height)
             const featureHeight = 10;    // Height of UTR rectangles
             const cdsHeight = 14;       // Height of CDS rectangles
             const trackSpacing = 15;    // Vertical space between transcript tracks
-            const svgHeight = padding.top + padding.bottom + (transcripts.length * (transcriptHeight + trackSpacing));
+            const axisHeight = 40;      // Space needed for the axis at the bottom
+            const svgHeight = padding.top + padding.bottom + (transcripts.length * (transcriptHeight + trackSpacing)) + axisHeight;
             svgElement.setAttribute('height', svgHeight);
             svgElement.setAttribute('viewBox', `0 0 ${svgWidth} ${svgHeight}`); // Make responsive
+
+            // --- Calculate Axis Y Position (now at the bottom) ---
+            const axisY = svgHeight - padding.bottom + 15; // Position axis within bottom padding area
 
             // --- Store Plot Parameters Globally ---
             // We store them within the currentGffData object
@@ -1533,59 +1533,13 @@
                     if (this.totalRange <= 0 || this.plotWidth <= 0) return this.padding.left;
                     return this.padding.left + ((coord - this.minCoord) / this.totalRange) * this.plotWidth;
                 },
-                axisY: padding.top - 25 // Store axis Y position for marker placement
+                axisY: axisY // Store the NEW axis Y position
             };
 
             // Local scaleX function for convenience within this render function
             const scaleX = (coord) => gffData.plotParams.scaleX(coord);
 
-            // --- Draw Axis/Ruler ---
-             const axisY = gffData.plotParams.axisY;
-             const axisLine = document.createElementNS(svgNS, 'line');
-             axisLine.setAttribute('x1', scaleX(minCoord));
-             axisLine.setAttribute('y1', axisY);
-             axisLine.setAttribute('x2', scaleX(maxCoord));
-             axisLine.setAttribute('y2', axisY);
-             axisLine.setAttribute('stroke', '#ccc');
-             svgElement.appendChild(axisLine);
-
-             // Add Axis Labels (Start and End)
-             const startLabel = document.createElementNS(svgNS, 'text');
-             startLabel.setAttribute('x', scaleX(minCoord));
-             startLabel.setAttribute('y', axisY - 5);
-             startLabel.setAttribute('font-size', '10px');
-             startLabel.setAttribute('text-anchor', 'start');
-             startLabel.textContent = minCoord.toLocaleString();
-             svgElement.appendChild(startLabel);
-
-             const endLabel = document.createElementNS(svgNS, 'text');
-             endLabel.setAttribute('x', scaleX(maxCoord));
-             endLabel.setAttribute('y', axisY - 5);
-             endLabel.setAttribute('font-size', '10px');
-             endLabel.setAttribute('text-anchor', 'end');
-             endLabel.textContent = maxCoord.toLocaleString();
-             svgElement.appendChild(endLabel);
-
-             // --- Modify Gene/Chromosome Label near axis ---
-             if (gffData.gene && gffData.gene.seqid) {
-                 const geneLabel = document.createElementNS(svgNS, 'text');
-                 const midPoint = padding.left + plotWidth / 2;
-                 geneLabel.setAttribute('x', midPoint);
-                 geneLabel.setAttribute('y', axisY - 15); // Above axis line
-                 geneLabel.setAttribute('font-size', '12px');
-                 geneLabel.setAttribute('font-weight', 'bold');
-                 geneLabel.setAttribute('text-anchor', 'middle');
-                 // Format chromosome ID
-                 let displayChrId = String(gffData.gene.seqid);
-                 if (!displayChrId.toLowerCase().startsWith('chr')) {
-                     displayChrId = 'chr' + displayChrId;
-                 }
-                 geneLabel.textContent = displayChrId; // Set text to chr{chromosome}
-                 svgElement.appendChild(geneLabel);
-             }
-
-
-            // --- Draw Transcripts ---
+            // --- Draw Transcripts FIRST ---
             transcripts.forEach((transcript, index) => {
                  // Create a group for each transcript row
                  const group = document.createElementNS(svgNS, 'g');
@@ -1593,25 +1547,26 @@
                  group.setAttribute('data-transcript-id', transcript.id); // Store transcript ID for click handler
                  svgElement.appendChild(group);
 
-                const yBase = padding.top + index * (transcriptHeight + trackSpacing);
-                const yCenter = yBase + transcriptHeight / 2;
+                 // Y position calculations now start from padding.top
+                 const yBase = padding.top + index * (transcriptHeight + trackSpacing);
+                 const yCenter = yBase + transcriptHeight / 2;
 
-                // --- Add elements to the group ---
+                 // --- Add elements to the group ---
 
-                // Draw Transcript Label - Add (canonical) text
-                const label = document.createElementNS(svgNS, 'text');
-                label.setAttribute('x', padding.left - 10); // Position left of the plot area
-                label.setAttribute('y', yCenter + 4); // Vertically center with feature
-                label.setAttribute('font-size', '10px');
-                label.setAttribute('text-anchor', 'end');
-                let labelText = transcript.name || transcript.id.split(':')[1] || `Transcript ${index + 1}`; // Use name or ID part
-                if (transcript.isCanonical) {
-                    label.setAttribute('font-weight', 'bold'); // Optionally make canonical bold
-                }
-                label.textContent = labelText;
-                group.appendChild(label); // Add to group
+                 // Draw Transcript Label - Add (canonical) text
+                 const label = document.createElementNS(svgNS, 'text');
+                 label.setAttribute('x', padding.left - 10); // Position left of the plot area
+                 label.setAttribute('y', yCenter + 4); // Vertically center with feature
+                 label.setAttribute('font-size', '10px');
+                 label.setAttribute('text-anchor', 'end');
+                 let labelText = transcript.name || transcript.id.split(':')[1] || `Transcript ${index + 1}`; // Use name or ID part
+                 if (transcript.isCanonical) {
+                     label.setAttribute('font-weight', 'bold'); // Optionally make canonical bold
+                 }
+                 label.textContent = labelText;
+                 group.appendChild(label); // Add to group
 
-                // Draw Intron Line (connecting exons)
+                 // Draw Intron Line (connecting exons)
                  let intronLine = null; // Keep reference if needed
                  if (transcript.exons.length > 1) {
                      intronLine = document.createElementNS(svgNS, 'line');
@@ -1638,37 +1593,37 @@
                  }
 
 
-                // Draw UTRs (thinner rectangles)
-                transcript.utrs.forEach(utr => {
-                    const x = scaleX(utr.start);
-                    const width = Math.max(1, scaleX(utr.end) - x);
-                    if (width <= 0) return; // Skip zero-width features
-                    const rect = document.createElementNS(svgNS, 'rect');
-                    rect.setAttribute('x', x);
-                    rect.setAttribute('y', yCenter - featureHeight / 2);
-                    rect.setAttribute('width', width);
-                    rect.setAttribute('height', featureHeight);
-                    rect.setAttribute('fill', '#a9a9a9'); // Darker grey for UTR
-                    rect.setAttribute('stroke', '#808080');
-                    group.appendChild(rect); // Add to group
-                });
-
-                // Draw CDS (thicker rectangles, overlaying UTRs if needed)
-                transcript.cds.forEach(cds => {
-                    const x = scaleX(cds.start);
-                    const width = Math.max(1, scaleX(cds.end) - x);
+                 // Draw UTRs (thinner rectangles)
+                 transcript.utrs.forEach(utr => {
+                     const x = scaleX(utr.start);
+                     const width = Math.max(1, scaleX(utr.end) - x);
                      if (width <= 0) return; // Skip zero-width features
-                    const rect = document.createElementNS(svgNS, 'rect');
-                    rect.setAttribute('x', x);
-                    rect.setAttribute('y', yCenter - cdsHeight / 2); // Center the thicker CDS
-                    rect.setAttribute('width', width);
-                    rect.setAttribute('height', cdsHeight);
-                    rect.setAttribute('fill', '#007bff'); // Updated Blue for CDS
-                    rect.setAttribute('stroke', '#0056b3');
-                    group.appendChild(rect); // Add to group
-                });
+                     const rect = document.createElementNS(svgNS, 'rect');
+                     rect.setAttribute('x', x);
+                     rect.setAttribute('y', yCenter - featureHeight / 2);
+                     rect.setAttribute('width', width);
+                     rect.setAttribute('height', featureHeight);
+                     rect.setAttribute('fill', '#a9a9a9'); // Darker grey for UTR
+                     rect.setAttribute('stroke', '#808080');
+                     group.appendChild(rect); // Add to group
+                 });
 
-                // Add strand indicator (chevrons on intron line)
+                 // Draw CDS (thicker rectangles, overlaying UTRs if needed)
+                 transcript.cds.forEach(cds => {
+                     const x = scaleX(cds.start);
+                     const width = Math.max(1, scaleX(cds.end) - x);
+                      if (width <= 0) return; // Skip zero-width features
+                     const rect = document.createElementNS(svgNS, 'rect');
+                     rect.setAttribute('x', x);
+                     rect.setAttribute('y', yCenter - cdsHeight / 2); // Center the thicker CDS
+                     rect.setAttribute('width', width);
+                     rect.setAttribute('height', cdsHeight);
+                     rect.setAttribute('fill', '#007bff'); // Updated Blue for CDS
+                     rect.setAttribute('stroke', '#0056b3');
+                     group.appendChild(rect); // Add to group
+                 });
+
+                 // Add strand indicator (chevrons on intron line)
                  if (transcript.exons.length > 1 && transcript.strand && plotWidth > 50) {
                        const arrowSize = 4;
                        // Draw chevrons within each intron segment
@@ -1735,6 +1690,50 @@
 
 
             });
+
+            // --- Draw Axis/Ruler LAST (at the bottom) ---
+             const axisLine = document.createElementNS(svgNS, 'line');
+             axisLine.setAttribute('x1', scaleX(minCoord));
+             axisLine.setAttribute('y1', axisY); // Use new Y
+             axisLine.setAttribute('x2', scaleX(maxCoord));
+             axisLine.setAttribute('y2', axisY); // Use new Y
+             axisLine.setAttribute('stroke', '#ccc');
+             svgElement.appendChild(axisLine);
+
+             // Add Axis Labels (Start and End) - positioned below the line
+             const startLabel = document.createElementNS(svgNS, 'text');
+             startLabel.setAttribute('x', scaleX(minCoord));
+             startLabel.setAttribute('y', axisY + 15); // Below line
+             startLabel.setAttribute('font-size', '10px');
+             startLabel.setAttribute('text-anchor', 'start');
+             startLabel.textContent = minCoord.toLocaleString();
+             svgElement.appendChild(startLabel);
+
+             const endLabel = document.createElementNS(svgNS, 'text');
+             endLabel.setAttribute('x', scaleX(maxCoord));
+             endLabel.setAttribute('y', axisY + 15); // Below line
+             endLabel.setAttribute('font-size', '10px');
+             endLabel.setAttribute('text-anchor', 'end');
+             endLabel.textContent = maxCoord.toLocaleString();
+             svgElement.appendChild(endLabel);
+
+             // --- Modify Gene/Chromosome Label near axis ---
+             if (gffData.gene && gffData.gene.seqid) {
+                 const geneLabel = document.createElementNS(svgNS, 'text');
+                 const midPoint = padding.left + plotWidth / 2;
+                 geneLabel.setAttribute('x', midPoint);
+                 geneLabel.setAttribute('y', axisY + 20); // Position BELOW the axis line and coord labels
+                 geneLabel.setAttribute('font-size', '12px');
+                 geneLabel.setAttribute('font-weight', 'bold');
+                 geneLabel.setAttribute('text-anchor', 'middle');
+                 // Format chromosome ID
+                 let displayChrId = String(gffData.gene.seqid);
+                 if (!displayChrId.toLowerCase().startsWith('chr')) {
+                     displayChrId = 'chr' + displayChrId;
+                 }
+                 geneLabel.textContent = displayChrId; // Set text to chr{chromosome}
+                 svgElement.appendChild(geneLabel);
+             }
         }
 
         // Generates ASOs specifically for a transcript using GLOBAL chemistry settings
