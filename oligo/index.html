@@ -79,8 +79,14 @@
         /* Groups for label+input pairs */
         #sugar-input-group, 
         #backbone-input-group {
-            flex-basis: 50%; /* Each group takes half the row */
+            flex-basis: calc(50% - 10px); /* Adjust basis to make space */
             flex-grow: 1; /* Allow growing if needed */
+        }
+        /* New style for the Top N group */
+        #top-n-input-group {
+             flex-basis: 100px; /* Give it a fixed initial size */
+             flex-shrink: 0; /* Prevent shrinking */
+             margin-left: 15px; /* Add space before it */
         }
 
         /* Style for the labels above the inputs */
@@ -95,7 +101,8 @@
 
         #gene-search,
         #chemistry-input,
-        #backbone-input {
+        #backbone-input,
+        #top-n-input { /* Add top-n-input */
             /* width adjusted below */
             padding: 10px 12px; 
             font-size: 15px; 
@@ -118,6 +125,17 @@
         #backbone-input {
              width: 100%;
         }
+        /* Top N input specific width */
+        #top-n-input {
+             width: 100%; /* Take full width of its smaller parent */
+             -moz-appearance: textfield; /* Hide spinners in Firefox */
+        }
+        /* Hide spinners in Chrome, Safari, Edge */
+        #top-n-input::-webkit-outer-spin-button,
+        #top-n-input::-webkit-inner-spin-button {
+          -webkit-appearance: none;
+          margin: 0;
+        }
        
         #backbone-input::placeholder { color: #aaa; font-style: italic; } 
 
@@ -129,7 +147,8 @@
 
         #gene-search:focus,
         #chemistry-input:focus,
-        #backbone-input:focus {
+        #backbone-input:focus,
+        #top-n-input:focus { /* Add top-n-input */
             outline: none;
             border-color: #D3A99D; 
             background-color: #fff;
@@ -474,6 +493,11 @@
                         <label for="backbone-input">Backbone Modifications</label>
                         <input type="text" id="backbone-input" placeholder="'s' (PS) / 'o' (PD)" value="sssssssssssssssssss"> 
                     </div>
+                    
+                    <div id="top-n-input-group"> <!-- New input group -->
+                        <label for="top-n-input">Top N Results</label>
+                        <input type="number" id="top-n-input" placeholder="Keep all" value="1000" min="1"> <!-- Default 1000 -->
+                    </div>
                 </div>
             </div>
         </div>
@@ -520,6 +544,7 @@
         let currentAsoLength = 0;
         let currentSugarPattern = [];
         let currentBackbonePattern = [];
+        let currentTopN = Infinity; // Store Top N globally, default to Infinity (keep all)
 
         // --- Mappings (Global) ---
         const nucleotide_to_idx = { 'A': 0n, 'T': 1n, 'G': 2n, 'C': 3n, 'N': 4n }; // Added 'N' for default case
@@ -700,6 +725,7 @@
             const geneName = document.getElementById('gene-search').value.trim();
             const chemistryString = document.getElementById('chemistry-input').value.trim(); // Get chemistry input
             const backboneString = document.getElementById('backbone-input').value.trim(); // Get backbone input
+            const topNString = document.getElementById('top-n-input').value.trim(); // Get Top N input
             const loadingElement = document.getElementById('loading');
             const resultsContainer = document.getElementById('results-container');
             const errorElement = document.getElementById('error-message');
@@ -742,10 +768,27 @@
             // to the linkage *after* the last nucleotide (implicitly PD).
             parsedBackbonePattern.push(true); 
 
+            // --- Parse and Validate Top N Input ---
+            let parsedTopN = Infinity; // Default: Keep all
+            if (topNString) {
+                const num = parseInt(topNString, 10);
+                if (!isNaN(num) && num > 0) {
+                    parsedTopN = num;
+                    console.log(`Filtering enabled: Keeping top ${parsedTopN} ASOs.`);
+                } else if (topNString) { // Only show error if non-empty and invalid
+                     showError(`Invalid "Top N" value: "${topNString}". Please enter a positive number or leave blank to keep all.`);
+                     resultsContainer.style.display = 'none'; 
+                     resultsContainer.innerHTML = '';
+                     subtitleHeader.classList.add('hidden'); 
+                     return;
+                }
+            }
+
              // --- Set Global ASO Design Parameters ---
              currentAsoLength = derivedAsoLength;
              currentSugarPattern = parsedSugarPattern;
              currentBackbonePattern = parsedBackbonePattern; // Now use the corrected (length N) pattern
+             currentTopN = parsedTopN; // Store the parsed Top N value
              // REMOVED: Old default backbone generation
              
              console.log(`Using ASO Length: ${currentAsoLength}`);
@@ -1685,6 +1728,7 @@
             const asoLengthToUse = currentAsoLength;
             const sugarPatternToUse = currentSugarPattern;
             const backbonePatternToUse = currentBackbonePattern;
+            const topNToKeep = currentTopN; // Use the global Top N setting
 
             const transcriptName = transcript.name || transcript.id.split(':')[1] || transcript.id; // Get best name
             const geneName = gene.name || 'UnknownGene'; // Get gene name
@@ -1741,118 +1785,154 @@
                 console.log(`Sequence length: ${seqLen}`);
                 console.log(`Transcript sequence indices: [${transcriptSeqStartIndex}, ${transcriptSeqEndIndex})`);
 
-                if (transcriptSeqStartIndex >= transcriptSeqEndIndex || transcriptSeqEndIndex - transcriptSeqStartIndex < asoLengthToUse) {
+                const potentialSiteCount = Math.max(0, transcriptSeqEndIndex - transcriptSeqStartIndex - asoLengthToUse + 1);
+                console.log(`Potential ASO sites within transcript region: ${potentialSiteCount}`);
+
+
+                if (potentialSiteCount === 0) {
                      showError(`Transcript region (${transcriptName}) is too short or invalid within the sequence to generate ASOs of length ${asoLengthToUse}.`);
                      loadingElement.style.display = 'none';
                      subtitleHeader.classList.add('hidden'); // Ensure hidden on error
                      return;
                 }
 
-                const asoDataList = [];
-                // Iterate using dynamic length
-                for (let i = transcriptSeqStartIndex; i <= transcriptSeqEndIndex - asoLengthToUse; i++) {
-                    const subseq = sequence.substring(i, i + asoLengthToUse); // Use dynamic length
-                    let aso = createComplement(subseq); // Get the complement first
+                // --- Modified Logic: Process in batches and filter ---
+                let topASOs = []; // Holds the current top N ASO objects { score, position, ... }
+                let minScoreInTopN = -Infinity; // Track the minimum score in the topASOs list when full
 
-                    // *** NEW: Reverse the complement only if the gene is on the positive strand ***
-                    if (geneStrand === '+') {
-                        aso = aso.split('').reverse().join(''); // Reverse the complement
-                    }
-                    // If strand is '-', we use the complement directly (no reverse needed)
+                const totalBatches = Math.ceil(potentialSiteCount / batchSizeForONNX);
+                let processedCount = 0; // Count sequences processed by ONNX
+                let generatedCount = 0; // Count sequences generated before filtering Ns
 
-                    if (!aso.includes('N')) {
-                        const gcContent = calculateGCContent(aso);
-                        let genomicPosition;
+                loadingElement.textContent = `Generating and scoring ASOs for ${transcriptName} (0/${potentialSiteCount})...`;
 
-                         // Genomic position calculation depends on strand
+
+                for (let batchStartIdx = transcriptSeqStartIndex; batchStartIdx < transcriptSeqEndIndex - asoLengthToUse + 1; batchStartIdx += batchSizeForONNX) {
+                     const batchEndIdx = Math.min(batchStartIdx + batchSizeForONNX, transcriptSeqEndIndex - asoLengthToUse + 1);
+                     const currentBatchSize = batchEndIdx - batchStartIdx;
+                     const batchNumber = Math.floor(generatedCount / batchSizeForONNX) + 1;
+
+                     console.log(`Processing batch ${batchNumber}/${totalBatches} (Target indices ${batchStartIdx} to ${batchEndIdx -1})...`);
+                     loadingElement.textContent = `Generating and scoring batch ${batchNumber}/${totalBatches} for ${transcriptName} (${processedCount}/${potentialSiteCount})...`;
+
+
+                     const batchAsoData = [];
+                     const batchAsoStrings = [];
+
+                     // 1. Generate ASOs for the current batch
+                     for (let i = batchStartIdx; i < batchEndIdx; i++) {
+                         generatedCount++;
+                         const subseq = sequence.substring(i, i + asoLengthToUse);
+                         let aso = createComplement(subseq);
+
                          if (geneStrand === '+') {
-                             // For '+' strand, the position is the start of the target segment + 1 (1-based)
-                             genomicPosition = geneStart + i + 1;
-                         } else { // geneStrand === '-'
-                             // For '-' strand, the position is the *start* of the target segment in genomic coordinates.
-                             // The target segment *ends* at index i in the *reverse complemented* reference sequence.
-                             // So the genomic coordinate corresponds to geneEnd - i.
-                             // However, the ASO binds to the start of the target sequence,
-                             // which corresponds to the end of the reference segment used.
-                             // Let's use the GFF standard: report the coordinate of the 5' most base of the *target site* on the reference genome.
-                             // For '-' strand, the ASO binds 5'->3' reading opposite the reference segment i to i+length.
-                             // The 5' end of the target site corresponds to reference position `geneEnd - i`.
-                             // The 3' end of the target site corresponds to reference position `geneEnd - (i + asoLengthToUse - 1)`
-                             // Let's report the start (lowest coordinate) which is `geneEnd - (i + asoLengthToUse - 1)`
-                             // Or, equivalently, the ASO corresponds to the reference sequence starting at `geneStart + i`.
-                             // Let's recalculate based on the reference sequence coordinates directly.
-                             // The ASO targets the sequence from `geneEnd - (i + asoLengthToUse - 1)` to `geneEnd - i`.
-                             // The starting position (lowest coordinate) is:
-                             genomicPosition = geneEnd - (i + asoLengthToUse - 1);
-
+                             aso = aso.split('').reverse().join('');
                          }
 
-                        const region = getAsoRegion(genomicPosition, asoLengthToUse, transcript); // Use dynamic length
+                         if (!aso.includes('N')) {
+                             const gcContent = calculateGCContent(aso);
+                             let genomicPosition;
+                             if (geneStrand === '+') {
+                                 genomicPosition = geneStart + i + 1;
+                             } else {
+                                 genomicPosition = geneEnd - (i + asoLengthToUse - 1);
+                             }
+                             const region = getAsoRegion(genomicPosition, asoLengthToUse, transcript);
 
-                        asoDataList.push({
-                            position: genomicPosition,
-                            targetSequence: subseq, // Store the original *target* sequence on the reference strand
-                            asoSequence: aso,       // Store the generated ASO (complement or reverse complement)
-                            gcContent: gcContent,
-                            region: region
-                        });
-                    }
-                }
+                             batchAsoData.push({
+                                 position: genomicPosition,
+                                 targetSequence: subseq,
+                                 asoSequence: aso,
+                                 gcContent: gcContent,
+                                 region: region
+                                 // score will be added after inference
+                             });
+                             batchAsoStrings.push(aso);
+                         } else {
+                              console.log(`Skipping ASO at index ${i} due to 'N' base.`);
+                         }
+                     }
 
-                if (asoDataList.length === 0) {
-                    showError(`No valid ASO sequences could be generated for transcript ${transcriptName} (check for N's or transcript length).`);
+                     if (batchAsoStrings.length === 0) {
+                         console.log(`Batch ${batchNumber} yielded no valid ASOs (all contained 'N').`);
+                         continue; // Skip to next batch
+                     }
+
+                     // 2. Run ONNX Inference on the valid ASOs in the batch
+                     console.log(`Running ONNX for batch ${batchNumber} (${batchAsoStrings.length} valid ASOs)...`);
+                     const batchScores = await oligo1(batchAsoStrings, sugarPatternToUse, backbonePatternToUse);
+                     processedCount += batchAsoStrings.length;
+
+                     if (!batchScores || batchScores.length !== batchAsoStrings.length) {
+                         throw new Error(`ONNX prediction failed or returned incorrect number of scores for batch ${batchNumber}. Expected ${batchAsoStrings.length}, got ${batchScores?.length ?? 0}.`);
+                     }
+
+                     // 3. Combine scores and filter against top N
+                     for (let j = 0; j < batchAsoStrings.length; j++) {
+                         const currentAso = batchAsoData[j];
+                         currentAso.score = batchScores[j];
+
+                         // If top list isn't full yet, just add it
+                         if (topASOs.length < topNToKeep) {
+                             topASOs.push(currentAso);
+                             // If it just became full, find the new minimum score
+                             if (topASOs.length === topNToKeep) {
+                                 minScoreInTopN = Math.min(...topASOs.map(a => a.score));
+                                 console.log(`Top ${topNToKeep} list filled. Current min score: ${minScoreInTopN.toFixed(4)}`);
+                             }
+                         }
+                         // If top list is full AND current score is better than the worst in the list
+                         else if (currentAso.score > minScoreInTopN) {
+                             // Find the index of the ASO with the minimum score and replace it
+                             const minIndex = topASOs.findIndex(a => a.score === minScoreInTopN);
+                             if (minIndex !== -1) {
+                                 topASOs[minIndex] = currentAso;
+                                 // Find the new minimum score in the updated list
+                                 minScoreInTopN = Math.min(...topASOs.map(a => a.score));
+                                  // console.log(`Replaced item. New min score in top ${topNToKeep}: ${minScoreInTopN.toFixed(4)}`);
+                             } else {
+                                 // This case should theoretically not happen if minScoreInTopN is correct
+                                 console.warn("Could not find minimum score item to replace, inconsistency possible.");
+                                 // As a fallback, recalculate min and potentially sort and slice
+                                 topASOs.sort((a, b) => b.score - a.score);
+                                 topASOs = topASOs.slice(0, topNToKeep);
+                                 minScoreInTopN = topASOs[topNToKeep - 1].score;
+                             }
+                         }
+                     }
+                     console.log(`Batch ${batchNumber} processed. Top ${topASOs.length} ASOs kept. Processed count: ${processedCount}/${potentialSiteCount}`);
+
+                } // End of batch loop
+
+                // --- Post-processing ---
+                loadingElement.textContent = 'Finalizing results...';
+                console.log(`Finished processing all batches. Total ASOs kept: ${topASOs.length}`);
+
+                if (topASOs.length === 0) {
+                    showError(`No valid ASO sequences could be generated or passed the filter for transcript ${transcriptName}.`);
                     loadingElement.style.display = 'none';
                     resultsContainer.style.display = 'none';
                     subtitleHeader.classList.add('hidden'); // Ensure hidden on error
                     return;
                 }
 
-                loadingElement.textContent = `Running oligo-1 for ${asoDataList.length} ASOs...`;
+                // Final sort of the top N ASOs by score
+                console.log("Sorting final top ASO list by score (descending)...");
+                topASOs.sort((a, b) => b.score - a.score);
 
-                const asoStrings = asoDataList.map(aso => aso.asoSequence);
-                const totalASOs = asoStrings.length;
-                let allScores = [];
-                let processedCount = 0;
 
-                console.log(`Starting ONNX inference for ${totalASOs} sequences in batches of ${batchSizeForONNX}`);
-                for (let i = 0; i < totalASOs; i += batchSizeForONNX) {
-                    const batchEnd = Math.min(i + batchSizeForONNX, totalASOs);
-                    const batchNumber = Math.floor(i / batchSizeForONNX) + 1;
-                    const totalBatches = Math.ceil(totalASOs / batchSizeForONNX);
-                    const currentBatchSize = batchEnd - i;
-
-                    console.log(`Processing batch ${batchNumber}/${totalBatches} (Indices ${i} to ${batchEnd - 1}), size ${currentBatchSize}`);
-                    const currentBatchStrings = asoStrings.slice(i, batchEnd);
-                    const batchScores = await oligo1(currentBatchStrings, sugarPatternToUse, backbonePatternToUse);
-
-                    if (batchScores && batchScores.length === currentBatchSize) {
-                        allScores = allScores.concat(batchScores);
-                        processedCount += currentBatchSize;
-                        loadingElement.textContent = `Processed ${processedCount}/${totalASOs} sequences...`;
-                    } else {
-                        throw new Error(`ONNX prediction failed or returned incorrect number of scores for batch ${batchNumber}. Expected ${currentBatchSize}, got ${batchScores?.length ?? 0}.`);
-                    }
-                    console.log(`Batch ${batchNumber} complete. Total processed: ${processedCount}/${totalASOs}`);
+                // --- Update Subtitle and Display ---
+                let subtitleText = `Top ${topASOs.length} ASOs targeting ${transcriptName}`;
+                if (topNToKeep !== Infinity && topASOs.length < topNToKeep) {
+                    subtitleText += ` (fewer than ${topNToKeep} generated/valid)`;
+                } else if (topNToKeep !== Infinity) {
+                     subtitleText = `Top ${topNToKeep} ASOs targeting ${transcriptName}`; // Show the N requested
+                } else {
+                    subtitleText = `All ${topASOs.length} ASOs targeting ${transcriptName}`; // If no filter was applied
                 }
+                subtitleElement.textContent = subtitleText;
 
-                 if (allScores.length !== totalASOs || processedCount !== totalASOs) {
-                    throw new Error(`Mismatch in final score count: Expected ${totalASOs}, but received ${allScores.length} scores (${processedCount} processed).`);
-                 }
-
-                // Add scores to the ASO data
-                asoDataList.forEach((aso, index) => {
-                    aso.score = allScores[index];
-                });
-
-                // Sort the ASO sequences by score in descending order
-                loadingElement.textContent = 'Sorting results...';
-                console.log("Sorting ASO sequences by score (descending)...");
-                asoDataList.sort((a, b) => b.score - a.score);
-
-                loadingElement.textContent = 'Displaying results...';
-                subtitleElement.textContent = `ASOs targeting ${transcriptName}`;
-
-                displayASOTable(asoDataList, gene.seqid || '?', transcriptName, geneName);
+                displayASOTable(topASOs, gene.seqid || '?', transcriptName, geneName);
 
             } catch (error) {
                 console.error(`Error generating ASOs for transcript ${transcriptName}:`, error);
