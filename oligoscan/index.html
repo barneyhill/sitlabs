@@ -1779,17 +1779,12 @@
 
                 // Calculate the start and end indices within the sequence string
                 // corresponding to the transcript's genomic coordinates.
-                let transcriptSeqStartIndex;
-                let transcriptSeqEndIndex;
+                let transcriptSeqStartIndex = transcript.start - geneStart;
+                let transcriptSeqEndIndex = transcript.end - geneStart + 1;
 
-                // NO CHANGE NEEDED HERE: Logic extracts the correct segment of the *reference* sequence
-                if (geneStrand === '+') {
-                    transcriptSeqStartIndex = transcript.start - geneStart;
-                    transcriptSeqEndIndex = transcript.end - geneStart + 1;
-                } else { // geneStrand === '-'
-                    transcriptSeqStartIndex = geneEnd - transcript.end;
-                    transcriptSeqEndIndex = geneEnd - transcript.start + 1;
-                }
+                // Clamp indices to be within the sequence bounds
+                transcriptSeqStartIndex = Math.max(0, transcriptSeqStartIndex);
+                transcriptSeqEndIndex = Math.min(seqLen, transcriptSeqEndIndex);
 
                 // Clamp indices to be within the sequence bounds
                 transcriptSeqStartIndex = Math.max(0, transcriptSeqStartIndex);
