@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>OligoScan</title>
+    <title>oligo-1</title>
     <script src="https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.min.js"></script>
     <!-- Load ONNX Runtime Web -->
     <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.21.0/dist/ort.min.js"></script>
@@ -466,7 +466,7 @@
         <!-- Add "About" link here -->
         <a href="#" id="about-link">About</a>
         <div class="search-container">
-            <h1>OligoScan</h1>
+            <h1>oligo-1</h1>
             <!-- Add subtitle here -->
             <p class="subtitle">Design effective antisense oligonucleotides</p>
             <div id="search-controls">
@@ -524,7 +524,7 @@
     <div id="popup-overlay" class="hidden"></div>
     <div id="about-popup" class="hidden">
         <button id="close-popup">&times;</button>
-        <h2>About OligoScan</h2>
+        <h2>About oligo-1</h2>
         <p>This tool predicts the efficacy of RNAse-H1 mediated antisense oligonucleotides (ASOs) based on their sequence and chemical modifications.</p>
         <p>Enter a gene name, select a transcript, define the ASO chemistry (sugar/backbone), and view predicted scores.</p>
         <p><em>Model details and citation will go here.</em></p>
@@ -1175,10 +1175,21 @@
 
             // --- Create Header Row ---
             const headerRow = document.createElement('tr');
-            const headers = ['Genomic Coordinate', 'Region', 'Target Sequence', 'ASO Sequence', 'GC Content (%)', 'OligoScan Score'];
+            const headers = ['Genomic Coordinate', 'Region', 'Target Sequence', 'ASO Sequence', 'GC Content (%)', 'oligo-1 Score'];
             headers.forEach(headerText => {
                 const header = document.createElement('th');
-                header.textContent = headerText;
+                header.textContent = headerText; // Set text content first
+
+                // Add icon with tooltip to the specific header
+                if (headerText === 'oligo-1 Score') {
+                    const space = document.createTextNode('\u00A0'); // Add a non-breaking space node
+                    const icon = document.createElement('i');
+                    icon.className = 'fa-regular fa-circle-question'; // Set Font Awesome classes
+                    icon.title = 'This is the predicted oligo-1 score. Higher is better.'; // Set the tooltip text
+                    header.appendChild(space); // Append the space
+                    header.appendChild(icon); // Append the icon element
+                }
+
                 headerRow.appendChild(header);
             });
             table.appendChild(headerRow);
@@ -1844,8 +1855,12 @@
 
                          if (!aso.includes('N')) {
                              const gcContent = calculateGCContent(aso);
-                             const genomicPosition = geneStart + i + 1;
-
+                             let genomicPosition;
+                             if (geneStrand === '+') {
+                                 genomicPosition = geneStart + i + 1;
+                             } else {
+                                 genomicPosition = geneEnd - (i + asoLengthToUse - 1);
+                             }
                              const region = getAsoRegion(genomicPosition, asoLengthToUse, transcript);
 
                              batchAsoData.push({
