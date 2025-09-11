@@ -911,36 +911,6 @@
             const gcCount = (sequence.match(/[GC]/gi) || []).length;
             return (gcCount / sequence.length) * 100;
         }
-
-        function generateASOSequences(sequence, length) {
-            const asoSequences = [];
-            if (sequence.length < length) {
-                console.warn("Sequence length is less than ASO length. No ASOs generated.");
-                return asoSequences; // Return empty if sequence is too short
-            }
-
-            for (let i = 0; i <= sequence.length - length; i++) {
-                const subseq = sequence.substring(i, i + length);
-                // Create ASO (complement) of the subsequence
-                const aso = createComplement(subseq);
-                // Only add if the ASO doesn't contain 'N' (meaning the target didn't contain 'N')
-                if (!aso.includes('N')) {
-                    // Calculate GC content for the ASO sequence
-                    const gcContent = calculateGCContent(aso);
-                    asoSequences.push({
-                        position: i + 1,
-                        targetSequence: subseq,
-                        asoSequence: aso,
-                        gcContent: gcContent // Store GC content
-                        // score will be added later
-                    });
-                } else {
-                     console.log(`Skipping ASO at position ${i+1} due to non-standard base in target: ${subseq}`);
-                }
-            }
-            
-            return asoSequences;
-        }
         
         function createComplement(sequence) {
             // Create the complement sequence (A→T, T→A, G→C, C→G)
