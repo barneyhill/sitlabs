@@ -1,0 +1,19 @@
+{
+  "name": "sitlabs",
+  "module": "server.ts",
+  "type": "module",
+  "devDependencies": {
+    "bun-types": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "zod": "^3.23.8",
+    "runpod-sdk": "^1.1.2"
+  },
+  "scripts": {
+    "start": "bun run server.ts",
+    "dev": "bun --watch run server.ts"
+  }
+}
