@@ -4,7 +4,7 @@ import { z } from 'zod';
 import path from 'path';
 import runpodSdk from "runpod-sdk";
 
-// --- Zod Schemas for Input Validation ---
+// --- Zod Schemas ---
 const ScoreAsosBodySchema = z.object({
   geneName: z.string().min(1),
   transcriptId: z.string().min(1),
@@ -20,15 +20,18 @@ interface GffFeature {
   exons?: GffFeature[]; cds?: GffFeature[]; utrs?: GffFeature[]; isCanonical?: boolean;
 }
 
-// --- RunPod SDK Initialization (Best Practice) ---
+// --- RunPod SDK Initialization ---
 const RUNPOD_API_KEY = Bun.env.RUNPOD_API_KEY;
 if (!RUNPOD_API_KEY) {
     console.error("FATAL: RUNPOD_API_KEY environment variable is not set. The server will not start.");
-    process.exit(1); // Exit immediately if the key is missing
+    process.exit(1);
 }
 const RUNPOD_ENDPOINT_ID = "uni6qber6ldu7k";
 const runpod = runpodSdk(RUNPOD_API_KEY);
 const endpoint = runpod.endpoint(RUNPOD_ENDPOINT_ID);
+
+// --- In-Memory Store for Job Metadata (THE FIX) ---
+const jobMetadataStore = new Map<string, { gene: GffFeature, transcript: GffFeature, topN?: number, targetRna: string }>();
 
 
 // --- Main Server Logic ---
@@ -42,7 +45,6 @@ Bun.serve({
     const pathname = url.pathname;
     console.log(`[${req.method}] ${pathname}`);
 
-    // API Routes
     if (pathname.startsWith('/api/')) {
       if (req.method === 'GET' && pathname.startsWith('/api/gene/')) {
         const geneName = pathname.split('/').pop();
@@ -54,22 +56,54 @@ Bun.serve({
           return new Response(JSON.stringify({ error: error.message }), { status: 404, headers: { 'Content-Type': 'application/json' } });
         }
       }
+
       if (req.method === 'POST' && pathname === '/api/score-asos') {
         try {
             const body = await req.json();
             const validation = ScoreAsosBodySchema.safeParse(body);
-            if (!validation.success) return new Response(JSON.stringify({ error: "Invalid request body", details: validation.error.flatten() }), { status: 400, headers: { 'Content-Type': 'application/json' } });
-            const results = await processAsoScoring(validation.data);
-            return new Response(JSON.stringify(results), { headers: { 'Content-Type': 'application/json' } });
+            if (!validation.success) return new Response(JSON.stringify({ error: "Invalid request body", details: validation.error.flatten() }), { status: 400 });
+            const runpodJob = await submitRunpodJob(validation.data);
+            return new Response(JSON.stringify({ jobId: runpodJob.id }), { headers: { 'Content-Type': 'application/json' } });
         } catch (error: any) {
-          console.error("Error in /api/score-asos:", error);
-          return new Response(JSON.stringify({ error: error.message || "An internal error occurred" }), { status: 500, headers: { 'Content-Type': 'application/json' } });
+          console.error("Error submitting RunPod job:", error);
+          return new Response(JSON.stringify({ error: error.message || "Failed to submit job" }), { status: 500 });
         }
       }
-      return new Response(JSON.stringify({ error: "API endpoint not found." }), { status: 404, headers: { 'Content-Type': 'application/json' } });
+
+      if (req.method === 'GET' && pathname.startsWith('/api/job-status/')) {
+          const jobId = pathname.split('/').pop();
+          if (!jobId) return new Response(JSON.stringify({ error: "Job ID is required." }), { status: 400 });
+          try {
+              const status = await endpoint.status(jobId);
+              if (status.status === 'COMPLETED') {
+                  const metadata = jobMetadataStore.get(jobId);
+                  if (metadata) {
+                      status.output = enrichRunpodOutput(status.output, metadata);
+                      jobMetadataStore.delete(jobId); // Clean up the store
+                  }
+              }
+              return new Response(JSON.stringify(status), { headers: { 'Content-Type': 'application/json' } });
+          } catch (error: any) {
+              console.error(`Error fetching status for job ${jobId}:`, error);
+              return new Response(JSON.stringify({ status: 'FAILED', error: error.message }), { status: 500 });
+          }
+      }
+
+       if (req.method === 'POST' && pathname.startsWith('/api/cancel-job/')) {
+          const jobId = pathname.split('/').pop();
+          if (!jobId) return new Response(JSON.stringify({ error: "Job ID is required." }), { status: 400 });
+          try {
+              console.log(`Received request to cancel job: ${jobId}`);
+              const result = await endpoint.cancel(jobId);
+              jobMetadataStore.delete(jobId); // Also clean up on cancel
+              return new Response(JSON.stringify(result));
+          } catch (error: any) {
+              return new Response(JSON.stringify({ error: error.message }), { status: 500 });
+          }
+      }
+      return new Response(JSON.stringify({ error: "API endpoint not found." }), { status: 404 });
     }
 
-    // Static File Serving
     let filePath = path.join(projectRoot, pathname);
     if (pathname.endsWith('/')) filePath = path.join(filePath, 'index.html');
     const file = Bun.file(filePath);
@@ -88,19 +122,36 @@ console.log(`Server listening on http://localhost:3000 | Serving static files fr
 
 // --- Backend Logic Functions ---
 
-async function processAsoScoring(data: z.infer<typeof ScoreAsosBodySchema>) {
+async function submitRunpodJob(data: z.infer<typeof ScoreAsosBodySchema>) {
     const { geneName, transcriptId, sugar, backbone, topN } = data;
     const { targetRna, gene, transcript } = await getTranscriptSequence(geneName, transcriptId);
     const { sugarMods, backboneMods, asoLength } = formatChemistryForApi(sugar, backbone);
-    const runpodResponse = await callRunPodApi({ target_rna: targetRna, aso_length: asoLength, sugar_mods: sugarMods, backbone_mods: backboneMods });
-    const scoredAsos = parseRunPodCsv(runpodResponse.csv_output);
-    const enrichedAsos = enrichAsoData(scoredAsos, targetRna, gene, transcript);
-    enrichedAsos.sort((a, b) => b.oligoai_score - a.oligoai_score);
-    return topN ? enrichedAsos.slice(0, topN) : enrichedAsos;
+    
+    console.log(`Submitting async job for ${geneName} (${transcriptId})...`);
+    const result = await endpoint.run({
+        input: { target_rna: targetRna, aso_length: asoLength, sugar_mods: sugarMods, backbone_mods: backboneMods, dosage: 1, transfection_method: "Lipofection", batch_size: 512 }
+    }, 3600 * 1000);
+
+    // Store the metadata needed for enrichment later
+    jobMetadataStore.set(result.id, { gene, transcript, topN, targetRna });
+
+    return result;
 }
 
+function enrichRunpodOutput(output: any, metadata: { gene: GffFeature, transcript: GffFeature, topN?: number, targetRna: string }) {
+    if (!output || !output.csv_output) return output;
+    
+    const { gene, transcript, topN, targetRna } = metadata;
+    const scoredAsos = parseRunPodCsv(output.csv_output);
+    const enrichedAsos = enrichAsoData(scoredAsos, targetRna, gene, transcript);
+    enrichedAsos.sort((a, b) => b.oligoai_score - a.oligoai_score);
+    
+    output.enriched_results = topN ? enrichedAsos.slice(0, topN) : enrichedAsos;
+    return output;
+}
 
-// --- Helper Functions ---
+// --- ALL OTHER HELPER FUNCTIONS (getGffData, parseGFF3, etc.) ---
+// These are unchanged.
 
 async function getGffData(geneName: string): Promise<any> {
   const gffPath = path.join(projectRoot, 'oligoscan', 'gene_sequences', `${geneName}.gff3.gz`);
@@ -127,27 +178,6 @@ async function getTranscriptSequence(geneName: string, transcriptId: string) {
     const startIndex = transcript.start - gene.start;
     const endIndex = transcript.end - gene.start + 1;
     return { targetRna: fullSequence.substring(startIndex, endIndex), gene, transcript };
-}
-
-async function callRunPodApi(payload: { target_rna: string; aso_length: number; sugar_mods: string; backbone_mods: string; }) {
-    console.log(`Calling RunPod endpoint '${RUNPOD_ENDPOINT_ID}' with SDK...`);
-    try {
-        const result = await endpoint.runSync({
-            input: { ...payload, dosage: 1, transfection_method: "Lipofection", batch_size: 32 }
-        }, 3600 * 1000); // 1hr timeout
-
-        if (result.status !== 'COMPLETED') {
-            console.error("RunPod job did not complete successfully:", result);
-            throw new Error(`RunPod job failed with status: ${result.status}. Error: ${result.error || 'Unknown error'}`);
-        }
-
-        console.log(`RunPod job ${result.id} completed successfully.`);
-        return result.output;
-
-    } catch (error: any) {
-        console.error("Error calling RunPod SDK:", error);
-        throw new Error(error.message || "An unexpected error occurred with the RunPod SDK.");
-    }
 }
 
 function formatChemistryForApi(sugarString: string, backboneString: string) {

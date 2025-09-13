@@ -3,6 +3,11 @@
 let currentGffData = null;
 const svgNS = "http://www.w3.org/2000/svg";
 
+// --- STATE MANAGEMENT for ASYNC JOBS ---
+let activeRunpodJobId = null;
+let jobPollingInterval = null;
+
+
 document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('search-button').addEventListener('click', handleGeneSearch);
     ['gene-search', 'chemistry-input', 'backbone-input', 'top-n-input'].forEach(id => {
@@ -11,7 +16,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('about-link').addEventListener('click', e => { e.preventDefault(); togglePopup(true); });
     document.getElementById('close-popup').addEventListener('click', () => togglePopup(false));
     document.getElementById('popup-overlay').addEventListener('click', () => togglePopup(false));
-    handleGeneSearch(); // Initial search on page load
+    handleGeneSearch();
 });
 
 async function handleGeneSearch() {
@@ -19,20 +24,13 @@ async function handleGeneSearch() {
     if (!geneName) return showError('Please enter a gene name.');
     resetUIState();
     setLoadingState(true, 'transcript', `Loading gene data for ${geneName}...`);
-
     try {
         const response = await fetch(`/api/gene/${geneName}`);
-        if (!response.ok) {
-            const err = await response.json();
-            throw new Error(err.error || `Gene '${geneName}' not found.`);
-        }
+        if (!response.ok) throw new Error((await response.json()).error || `Gene '${geneName}' not found.`);
         currentGffData = await response.json();
-        if (!currentGffData || !currentGffData.transcripts || currentGffData.transcripts.length === 0) {
-            throw new Error(`No transcripts found for '${geneName}'.`);
-        }
+        if (!currentGffData?.transcripts?.length) throw new Error(`No transcripts found for '${geneName}'.`);
         renderTranscripts(currentGffData, document.getElementById('transcript-plot-svg'));
     } catch (error) {
-        console.error('Error fetching gene data:', error);
         showError(error.message, 'transcript');
     } finally {
         setLoadingState(false, 'transcript');
@@ -40,38 +38,103 @@ async function handleGeneSearch() {
 }
 
 async function handleTranscriptClick(transcript) {
-    const geneName = document.getElementById('gene-search').value.trim();
-    const sugar = document.getElementById('chemistry-input').value.trim();
-    const backbone = document.getElementById('backbone-input').value.trim();
-    const topNRaw = document.getElementById('top-n-input').value.trim();
-    
+    // 1. Cancel any previous, active job
+    if (activeRunpodJobId) {
+        console.log(`Cancelling previous job: ${activeRunpodJobId}`);
+        fetch(`/api/cancel-job/${activeRunpodJobId}`, { method: 'POST' }); // Fire and forget
+    }
+    if (jobPollingInterval) {
+        clearInterval(jobPollingInterval);
+    }
+
     resetResultsState();
-    setLoadingState(true, 'aso', `Scoring ASOs for ${transcript.name || transcript.id}...`);
+    setLoadingState(true, 'aso', `Submitting job for ${transcript.name || transcript.id}...`);
 
     try {
+        const geneName = document.getElementById('gene-search').value.trim();
+        const sugar = document.getElementById('chemistry-input').value.trim();
+        const backbone = document.getElementById('backbone-input').value.trim();
+        const topNRaw = document.getElementById('top-n-input').value.trim();
+
+        // 2. Submit the new job
         const response = await fetch('/api/score-asos', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ geneName, transcriptId: transcript.id, sugar, backbone, topN: topNRaw ? parseInt(topNRaw, 10) : undefined })
+            body: JSON.stringify({
+                geneName, transcriptId: transcript.id, sugar, backbone, topN: topNRaw ? parseInt(topNRaw, 10) : undefined
+            })
         });
 
-        if (!response.ok) {
-            const err = await response.json();
-            throw new Error(err.error || 'Failed to get ASO scores from server.');
-        }
-        const asoResults = await response.json();
-        if (!asoResults || asoResults.length === 0) {
-            throw new Error(`No valid ASOs returned for transcript ${transcript.name || transcript.id}.`);
-        }
-        const transcriptName = transcript.name || transcript.id.split(':').pop();
-        document.getElementById('aso-table-subtitle').textContent = `Top ${asoResults.length} ASOs for ${transcriptName}`;
-        displayASOTable(asoResults, geneName, transcriptName);
+        if (!response.ok) throw new Error((await response.json()).error || 'Failed to submit job.');
+
+        const { jobId } = await response.json();
+        activeRunpodJobId = jobId;
+        console.log(`Job submitted successfully. New active job ID: ${activeRunpodJobId}`);
+
+        // 3. Start polling for results
+        pollForResults(activeRunpodJobId, transcript);
+
     } catch (error) {
-        console.error('Error scoring ASOs:', error);
         showError(error.message, 'aso');
-    } finally {
         setLoadingState(false, 'aso');
     }
+}
+
+function pollForResults(jobId, transcript) {
+    let pollCount = 0;
+    const maxPolls = 720; // 60 polls * 5 seconds = 60 minutes timeout
+
+    setLoadingState(true, 'aso', 'Job queued... waiting for worker...');
+
+    jobPollingInterval = setInterval(async () => {
+        // If another job has been started, stop this polling loop
+        if (jobId !== activeRunpodJobId) {
+            clearInterval(jobPollingInterval);
+            return;
+        }
+
+        if (pollCount++ > maxPolls) {
+            showError('Job timed out after 60 minutes.', 'aso');
+            clearInterval(jobPollingInterval);
+            activeRunpodJobId = null;
+            return;
+        }
+
+        try {
+            const res = await fetch(`/api/job-status/${jobId}`);
+            if (!res.ok) throw new Error('Server returned an error on status check.');
+            
+            const status = await res.json();
+
+            if (status.status === 'IN_PROGRESS') {
+                setLoadingState(true, 'aso', 'Worker running... scoring ASOs...');
+            } else if (status.status === 'COMPLETED') {
+                clearInterval(jobPollingInterval);
+                activeRunpodJobId = null;
+                setLoadingState(false, 'aso');
+                const asoResults = status.output.enriched_results;
+                if (!asoResults || asoResults.length === 0) {
+                   showError(`Job completed but no valid ASOs were returned.`, 'aso');
+                   return;
+                }
+                const geneName = currentGffData.gene.name;
+                const transcriptName = transcript.name || transcript.id.split(':').pop();
+                document.getElementById('aso-table-subtitle').textContent = `Top ${asoResults.length} ASOs for ${transcriptName}`;
+                displayASOTable(asoResults, geneName, transcriptName);
+            } else if (status.status === 'FAILED') {
+                clearInterval(jobPollingInterval);
+                activeRunpodJobId = null;
+                showError(`Job failed: ${status.error || 'Unknown RunPod error.'}`, 'aso');
+            }
+            // else, status is IN_QUEUE or other, so we just keep polling
+        } catch (error) {
+            // Network error during polling
+            console.error("Polling error:", error);
+            showError('Network error while checking job status.', 'aso');
+            clearInterval(jobPollingInterval);
+            activeRunpodJobId = null;
+        }
+    }, 5000); // Poll every 5 seconds
 }
 
 function displayASOTable(asoSequences, geneName, transcriptName) {
@@ -79,19 +142,16 @@ function displayASOTable(asoSequences, geneName, transcriptName) {
     container.innerHTML = '';
     const table = document.createElement('table');
     table.innerHTML = `<tr><th>Genomic Coordinate</th><th>Region</th><th>Target Sequence</th><th>ASO Sequence</th><th>GC Content (%)</th><th>OligoScan Score</th></tr>`;
-    
+
     const sugarPattern = document.getElementById('chemistry-input').value;
     const isModified = (index) => {
-        // A simplified check to highlight non-DNA wings. This could be made more robust.
         return sugarPattern.toLowerCase().includes('moe') || sugarPattern.toLowerCase().includes('cet');
     };
 
     asoSequences.forEach(aso => {
         const row = table.insertRow();
         row.dataset.position = aso.genomic_coordinate.split(':')[1];
-        
         let styledAso = aso.aso_sequence.split('').map((base, i) => isModified(i) ? `<b>${base}</b>` : base).join('');
-
         row.innerHTML = `
             <td>${aso.genomic_coordinate}</td>
             <td>${aso.region}</td>
@@ -113,27 +173,22 @@ function displayASOTable(asoSequences, geneName, transcriptName) {
 function renderTranscripts(gffData, svgElement) {
     svgElement.innerHTML = '';
     document.getElementById('transcript-plot-title').textContent = `Select a ${gffData.gene?.name || 'Gene'} transcript...`;
-
     const transcripts = gffData.transcripts.sort((a, b) => (b.isCanonical ?? false) - (a.isCanonical ?? false));
     const { minCoord, maxCoord } = gffData;
     const totalRange = maxCoord - minCoord;
-    if (totalRange <= 0) return; // Avoid division by zero
-
+    if (totalRange <= 0) return;
     const p = { t: 20, r: 20, b: 50, l: 100 };
     const svgWidth = svgElement.clientWidth || 800;
     const plotWidth = svgWidth - p.l - p.r;
     const trackH = 20, featH = 10, cdsH = 14, trackS = 15;
     const svgHeight = p.t + p.b + (transcripts.length * (trackH + trackS));
     svgElement.setAttribute('height', svgHeight);
-
     const scaleX = (coord) => p.l + ((coord - minCoord) / totalRange) * plotWidth;
     currentGffData.plotParams = { minCoord, maxCoord, scaleX, svgHeight };
-    
     transcripts.forEach((transcript, index) => {
         const g = document.createElementNS(svgNS, 'g');
         g.classList.add('transcript-row');
         const yCenter = p.t + index * (trackH + trackS) + (trackH / 2);
-        
         const firstExon = transcript.exons[0];
         const lastExon = transcript.exons[transcript.exons.length - 1];
         g.innerHTML = `
@@ -180,7 +235,7 @@ function showMarkerOnPlot(position) {
     if (position < minCoord || position > maxCoord) return;
     const x = scaleX(position);
     const marker = document.createElementNS(svgNS, 'line');
-    Object.assign(marker, { id: 'aso-hover-marker' });
+    marker.id = 'aso-hover-marker';
     marker.setAttribute('x1', x); marker.setAttribute('y1', 0);
     marker.setAttribute('x2', x); marker.setAttribute('y2', svgHeight);
     marker.setAttribute('stroke', '#E8796A'); marker.setAttribute('stroke-width', '1.5');
@@ -204,6 +259,7 @@ function showError(message, type) {
     const errorEl = document.getElementById(errorId);
     errorEl.textContent = message;
     errorEl.style.display = 'block';
+    setLoadingState(false, type === 'transcript' ? 'transcript' : 'aso');
 }
 function resetUIState() {
     document.getElementById('transcript-plot-container').style.display = 'none';
