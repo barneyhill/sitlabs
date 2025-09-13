@@ -1,35 +1,126 @@
-// sitlabs/oligoscan/client.js
-
 let currentGffData = null;
 const svgNS = "http://www.w3.org/2000/svg";
 
-// --- STATE MANAGEMENT for ASYNC JOBS ---
+// State management
 let activeRunpodJobId = null;
 let jobPollingInterval = null;
+let currentJobId = null;
+let currentPage = 1;
+let totalPages = 1;
+let currentResults = [];
 
+document.addEventListener('DOMContentLoaded', async () => {
+    setupEventListeners();
 
-document.addEventListener('DOMContentLoaded', () => {
+    // Check for jobId in URL
+    const urlJobId = getJobIdFromUrl();
+    if (urlJobId) {
+        await loadFromJobId(urlJobId);
+    } else {
+        // Default search
+        handleGeneSearch();
+    }
+});
+
+function setupEventListeners() {
     document.getElementById('search-button').addEventListener('click', handleGeneSearch);
-    ['gene-search', 'chemistry-input', 'backbone-input', 'top-n-input'].forEach(id => {
+    ['gene-search', 'chemistry-input', 'backbone-input'].forEach(id => {
         document.getElementById(id).addEventListener('keypress', e => e.key === 'Enter' && handleGeneSearch());
     });
     document.getElementById('about-link').addEventListener('click', e => { e.preventDefault(); togglePopup(true); });
     document.getElementById('close-popup').addEventListener('click', () => togglePopup(false));
     document.getElementById('popup-overlay').addEventListener('click', () => togglePopup(false));
-    handleGeneSearch();
-});
+
+    // Pagination controls
+    document.getElementById('prev-page').addEventListener('click', () => changePage(currentPage - 1));
+    document.getElementById('next-page').addEventListener('click', () => changePage(currentPage + 1));
+    
+    // Action buttons
+    document.getElementById('download-csv').addEventListener('click', downloadAllCsv);
+    document.getElementById('copy-link').addEventListener('click', copyShareableLink);
+}
+
+function getJobIdFromUrl() {
+    const match = window.location.pathname.match(/\/oligoscan\/([^\/]+)/);
+    return match ? match[1] : null;
+}
+
+function updateUrl(jobId) {
+    if (jobId) {
+        history.pushState({}, '', `/oligoscan/${jobId}`);
+    } else {
+        history.pushState({}, '', '/oligoscan');
+    }
+}
+
+async function loadFromJobId(jobId) {
+    setLoadingState(true, 'page', 'Loading analysis...');
+
+    try {
+        // Fetch metadata
+        const metaResponse = await fetch(`/api/results/${jobId}/meta`);
+        if (!metaResponse.ok) {
+            throw new Error('Analysis not found');
+        }
+
+        const metadata = await metaResponse.json();
+        currentJobId = jobId;
+
+        // Populate UI with saved parameters
+        document.getElementById('gene-search').value = metadata.gene;
+        document.getElementById('chemistry-input').value = metadata.chemistry.sugar;
+        document.getElementById('backbone-input').value = metadata.chemistry.backbone;
+
+        // Load gene visualization
+        await loadGeneVisualization(metadata.gene);
+
+        // Select the transcript
+        selectTranscriptById(metadata.transcriptId);
+
+        // Load results if completed
+        if (metadata.status === 'completed') {
+            await loadResultsPage(jobId, 1);
+        } else if (metadata.status === 'pending') {
+            // Resume polling
+            pollForCompletion(jobId);
+        } else {
+            showError('Analysis failed. Please try again.', 'aso');
+        }
+    } catch (error) {
+        showError(error.message || 'Failed to load analysis', 'page');
+        updateUrl(null);
+    } finally {
+        setLoadingState(false, 'page');
+    }
+}
+
+async function loadGeneVisualization(geneName) {
+    const response = await fetch(`/api/gene/${geneName}`);
+    if (!response.ok) throw new Error(`Gene '${geneName}' not found`);
+    currentGffData = await response.json();
+    if (!currentGffData?.transcripts?.length) throw new Error(`No transcripts found for '${geneName}'`);
+    renderTranscripts(currentGffData, document.getElementById('transcript-plot-svg'));
+    document.getElementById('transcript-plot-container').style.display = 'block';
+}
+
+function selectTranscriptById(transcriptId) {
+    const rows = document.querySelectorAll('.transcript-row');
+    rows.forEach(row => {
+        if (row.dataset.transcriptId === transcriptId) {
+            row.classList.add('selected');
+        }
+    });
+}
 
 async function handleGeneSearch() {
     const geneName = document.getElementById('gene-search').value.trim();
     if (!geneName) return showError('Please enter a gene name.');
+
     resetUIState();
     setLoadingState(true, 'transcript', `Loading gene data for ${geneName}...`);
+
     try {
-        const response = await fetch(`/api/gene/${geneName}`);
-        if (!response.ok) throw new Error((await response.json()).error || `Gene '${geneName}' not found.`);
-        currentGffData = await response.json();
-        if (!currentGffData?.transcripts?.length) throw new Error(`No transcripts found for '${geneName}'.`);
-        renderTranscripts(currentGffData, document.getElementById('transcript-plot-svg'));
+        await loadGeneVisualization(geneName);
     } catch (error) {
         showError(error.message, 'transcript');
     } finally {
@@ -38,10 +129,10 @@ async function handleGeneSearch() {
 }
 
 async function handleTranscriptClick(transcript) {
-    // 1. Cancel any previous, active job
+    // Cancel any previous job
     if (activeRunpodJobId) {
         console.log(`Cancelling previous job: ${activeRunpodJobId}`);
-        fetch(`/api/cancel-job/${activeRunpodJobId}`, { method: 'POST' }); // Fire and forget
+        fetch(`/api/cancel-job/${activeRunpodJobId}`, { method: 'POST' });
     }
     if (jobPollingInterval) {
         clearInterval(jobPollingInterval);
@@ -54,25 +145,24 @@ async function handleTranscriptClick(transcript) {
         const geneName = document.getElementById('gene-search').value.trim();
         const sugar = document.getElementById('chemistry-input').value.trim();
         const backbone = document.getElementById('backbone-input').value.trim();
-        const topNRaw = document.getElementById('top-n-input').value.trim();
 
-        // 2. Submit the new job
         const response = await fetch('/api/score-asos', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                geneName, transcriptId: transcript.id, sugar, backbone, topN: topNRaw ? parseInt(topNRaw, 10) : undefined
-            })
+            body: JSON.stringify({ geneName, transcriptId: transcript.id, sugar, backbone })
         });
 
-        if (!response.ok) throw new Error((await response.json()).error || 'Failed to submit job.');
+        if (!response.ok) throw new Error((await response.json()).error || 'Failed to submit job');
 
         const { jobId } = await response.json();
         activeRunpodJobId = jobId;
-        console.log(`Job submitted successfully. New active job ID: ${activeRunpodJobId}`);
+        currentJobId = jobId;
 
-        // 3. Start polling for results
-        pollForResults(activeRunpodJobId, transcript);
+        // Update URL immediately
+        updateUrl(jobId);
+
+        console.log(`Job submitted: ${jobId}`);
+        pollForCompletion(jobId);
 
     } catch (error) {
         showError(error.message, 'aso');
@@ -80,15 +170,14 @@ async function handleTranscriptClick(transcript) {
     }
 }
 
-function pollForResults(jobId, transcript) {
+function pollForCompletion(jobId) {
     let pollCount = 0;
-    const maxPolls = 720; // 60 polls * 5 seconds = 60 minutes timeout
+    const maxPolls = 720;
 
     setLoadingState(true, 'aso', 'Job queued... waiting for worker...');
 
     jobPollingInterval = setInterval(async () => {
-        // If another job has been started, stop this polling loop
-        if (jobId !== activeRunpodJobId) {
+        if (jobId !== activeRunpodJobId && jobId !== currentJobId) {
             clearInterval(jobPollingInterval);
             return;
         }
@@ -102,42 +191,77 @@ function pollForResults(jobId, transcript) {
 
         try {
             const res = await fetch(`/api/job-status/${jobId}`);
-            if (!res.ok) throw new Error('Server returned an error on status check.');
-            
-            const status = await res.json();
+            if (!res.ok) throw new Error('Failed to check status');
 
-            if (status.status === 'IN_PROGRESS') {
+            const { status } = await res.json();
+
+            if (status === 'IN_PROGRESS') {
                 setLoadingState(true, 'aso', 'Worker running... scoring ASOs...');
-            } else if (status.status === 'COMPLETED') {
+            } else if (status === 'COMPLETED') {
                 clearInterval(jobPollingInterval);
                 activeRunpodJobId = null;
                 setLoadingState(false, 'aso');
-                const asoResults = status.output.enriched_results;
-                if (!asoResults || asoResults.length === 0) {
-                   showError(`Job completed but no valid ASOs were returned.`, 'aso');
-                   return;
-                }
-                const geneName = currentGffData.gene.name;
-                const transcriptName = transcript.name || transcript.id.split(':').pop();
-                document.getElementById('aso-table-subtitle').textContent = `Top ${asoResults.length} ASOs for ${transcriptName}`;
-                displayASOTable(asoResults, geneName, transcriptName);
-            } else if (status.status === 'FAILED') {
+
+                // Load first page of results
+                await loadResultsPage(jobId, 1);
+            } else if (status === 'FAILED') {
                 clearInterval(jobPollingInterval);
                 activeRunpodJobId = null;
-                showError(`Job failed: ${status.error || 'Unknown RunPod error.'}`, 'aso');
+                showError('Job failed. Please try again.', 'aso');
             }
-            // else, status is IN_QUEUE or other, so we just keep polling
         } catch (error) {
-            // Network error during polling
             console.error("Polling error:", error);
             showError('Network error while checking job status.', 'aso');
             clearInterval(jobPollingInterval);
             activeRunpodJobId = null;
         }
-    }, 5000); // Poll every 5 seconds
+    }, 5000);
 }
 
-function displayASOTable(asoSequences, geneName, transcriptName) {
+async function loadResultsPage(jobId, page) {
+    try {
+        const response = await fetch(`/api/results/${jobId}?page=${page}&limit=100`);
+        if (!response.ok) throw new Error('Failed to load results');
+
+        const { data, pagination } = await response.json();
+
+        currentResults = data;
+        currentPage = pagination.page;
+        totalPages = pagination.pages;
+
+        // Update subtitle
+        const metaResponse = await fetch(`/api/results/${jobId}/meta`);
+        const metadata = await metaResponse.json();
+        document.getElementById('aso-table-subtitle').textContent =
+            `${metadata.gene} - ${metadata.transcriptName} (${pagination.total.toLocaleString()} total ASOs)`;
+
+        // Display results
+        displayASOTable(data);
+
+        // Update pagination controls
+        updatePaginationControls(pagination);
+
+        // Show results container
+        document.getElementById('results-container').style.display = 'block';
+        document.getElementById('aso-table-header').classList.remove('hidden');
+    } catch (error) {
+        showError('Failed to load results: ' + error.message, 'aso');
+    }
+}
+
+async function changePage(page) {
+    if (page < 1 || page > totalPages || !currentJobId) return;
+    await loadResultsPage(currentJobId, page);
+}
+
+function updatePaginationControls(pagination) {
+    document.getElementById('prev-page').disabled = pagination.page === 1;
+    document.getElementById('next-page').disabled = pagination.page === pagination.pages;
+    document.getElementById('current-page').textContent = pagination.page;
+    document.getElementById('total-pages').textContent = pagination.pages;
+}
+
+function displayASOTable(asoSequences) {
     const container = document.getElementById('results-container');
     container.innerHTML = '';
     const table = document.createElement('table');
@@ -165,10 +289,50 @@ function displayASOTable(asoSequences, geneName, transcriptName) {
     });
 
     container.appendChild(table);
-    container.style.display = 'block';
-    document.getElementById('aso-table-header').classList.remove('hidden');
-    setupDownloadLink(asoSequences, `${geneName}_${transcriptName}_ASOs.csv`);
 }
+
+async function downloadAllCsv() {
+    if (!currentJobId) return;
+    window.location.href = `/api/results/${currentJobId}/download-csv`;
+}
+
+function copyShareableLink() {
+    const url = window.location.href;
+    const btn = document.getElementById('copy-link');
+    const originalHtml = btn.innerHTML;
+
+    const showSuccess = () => {
+        btn.innerHTML = '<i class="fa-solid fa-check"></i>';
+        btn.style.backgroundColor = '#28a745';
+        setTimeout(() => {
+            btn.innerHTML = originalHtml;
+            btn.style.backgroundColor = '';
+        }, 2000);
+    };
+
+    // Modern, secure context method
+    if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(url).then(showSuccess).catch(err => {
+            console.error('Async copy failed:', err);
+        });
+    } else {
+        // Fallback for insecure contexts (HTTP)
+        const textArea = document.createElement('textarea');
+        textArea.value = url;
+        textArea.style.position = 'absolute';
+        textArea.style.left = '-9999px';
+        document.body.appendChild(textArea);
+        textArea.select();
+        try {
+            document.execCommand('copy');
+            showSuccess();
+        } catch (err) {
+            console.error('Fallback copy failed', err);
+        }
+        document.body.removeChild(textArea);
+    }
+}
+
 
 function renderTranscripts(gffData, svgElement) {
     svgElement.innerHTML = '';
@@ -185,9 +349,11 @@ function renderTranscripts(gffData, svgElement) {
     svgElement.setAttribute('height', svgHeight);
     const scaleX = (coord) => p.l + ((coord - minCoord) / totalRange) * plotWidth;
     currentGffData.plotParams = { minCoord, maxCoord, scaleX, svgHeight };
+
     transcripts.forEach((transcript, index) => {
         const g = document.createElementNS(svgNS, 'g');
         g.classList.add('transcript-row');
+        g.dataset.transcriptId = transcript.id;
         const yCenter = p.t + index * (trackH + trackS) + (trackH / 2);
         const firstExon = transcript.exons[0];
         const lastExon = transcript.exons[transcript.exons.length - 1];
@@ -205,25 +371,6 @@ function renderTranscripts(gffData, svgElement) {
         g.addEventListener('mouseover', () => !g.classList.contains('selected') && g.classList.add('hover-highlight'));
         g.addEventListener('mouseout', () => g.classList.remove('hover-highlight'));
         svgElement.appendChild(g);
-    });
-}
-
-function setupDownloadLink(data, filename) {
-    const link = document.getElementById('download-aso-table');
-    const newLink = link.cloneNode(true);
-    link.parentNode.replaceChild(newLink, link);
-    newLink.addEventListener('click', e => {
-        e.preventDefault();
-        const headers = "genomic_coordinate,region,target_sequence,aso_sequence,gc_content,oligoai_score";
-        const csvRows = data.map(r => [r.genomic_coordinate, r.region, r.target_sequence, r.aso_sequence, r.gc_content.toFixed(1), r.oligoai_score.toFixed(4)].join(','));
-        const csv = [headers, ...csvRows].join('\n');
-        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = filename;
-        a.click();
-        URL.revokeObjectURL(url);
     });
 }
 
@@ -249,9 +396,12 @@ function togglePopup(show) {
     document.getElementById('popup-overlay').classList.toggle('hidden', !show);
 }
 function setLoadingState(isLoading, type, message = '') {
-    const loadingId = type === 'transcript' ? 'transcript-loading' : 'loading';
-    document.getElementById(loadingId).textContent = message;
-    document.getElementById(loadingId).style.display = isLoading ? 'block' : 'none';
+    const loadingId = type === 'transcript' ? 'transcript-loading' : type === 'page' ? 'page-loading' : 'loading';
+    const element = document.getElementById(loadingId);
+    if (element) {
+        element.textContent = message;
+        element.style.display = isLoading ? 'block' : 'none';
+    }
     if (type === 'transcript') document.getElementById('transcript-plot-container').style.display = 'block';
 }
 function showError(message, type) {
@@ -266,10 +416,14 @@ function resetUIState() {
     document.getElementById('transcript-error').style.display = 'none';
     document.getElementById('transcript-plot-svg').innerHTML = '';
     resetResultsState();
+    updateUrl(null);
 }
 function resetResultsState() {
     document.getElementById('results-container').style.display = 'none';
     document.getElementById('loading').style.display = 'none';
     document.getElementById('error-message').style.display = 'none';
     document.getElementById('aso-table-header').classList.add('hidden');
+    currentResults = [];
+    currentPage = 1;
+    totalPages = 1;
 }

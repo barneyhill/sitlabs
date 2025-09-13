@@ -1,4 +1,3 @@
-/* sitlabs/oligoscan/style.css */
 body { font-family: 'Inter', Arial, sans-serif; margin: 0; padding: 0 0 50px; line-height: 1.6; background-color: #FAF8F5; color: #5a5a5a; }
 h1, h2, h3 { color: #333; font-weight: 500; }
 header { background-color: transparent; padding: 40px 0 20px 0; text-align: center; }
@@ -7,25 +6,101 @@ header h1 { font-family: "Libre Baskerville", serif; font-size: 2.5em; font-weig
 #search-controls { display: flex; gap: 15px; align-items: flex-end; flex-wrap: wrap; background-color: #FFFFFF; border-radius: 12px; padding: 20px; box-shadow: 0 5px 15px rgba(0, 0, 0, 0.06); margin: 20px auto; }
 .chemistry-option { display: flex; flex-basis: 100%; gap: 15px; width: 100%; }
 #sugar-input-group, #backbone-input-group { flex-basis: calc(50% - 10px); flex-grow: 1; }
-#top-n-input-group { flex-basis: 100px; flex-shrink: 0; }
 .chemistry-option label { display: block; font-size: 0.8em; color: #666; margin-bottom: 3px; text-align: left; font-weight: 500; }
-#gene-search, #chemistry-input, #backbone-input, #top-n-input { padding: 10px 12px; font-size: 15px; border: 1px solid #EAE8E5; border-radius: 8px; background-color: #FDFCFB; transition: border-color 0.2s ease; color: #5a5a5a; box-sizing: border-box; }
+#gene-search, #chemistry-input, #backbone-input { padding: 10px 12px; font-size: 15px; border: 1px solid #EAE8E5; border-radius: 8px; background-color: #FDFCFB; transition: border-color 0.2s ease; color: #5a5a5a; box-sizing: border-box; }
 #gene-search { flex-grow: 1; }
-#chemistry-input, #backbone-input, #top-n-input { width: 100%; }
-#top-n-input { -moz-appearance: textfield; }
-#top-n-input::-webkit-outer-spin-button, #top-n-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+#chemistry-input, #backbone-input { width: 100%; }
 #gene-search::placeholder, #chemistry-input::placeholder, #backbone-input::placeholder { color: #aaa; font-style: italic; }
-#gene-search:focus, #chemistry-input:focus, #backbone-input:focus, #top-n-input:focus { outline: none; border-color: #D3A99D; background-color: #fff; }
+#gene-search:focus, #chemistry-input:focus, #backbone-input:focus { outline: none; border-color: #D3A99D; background-color: #fff; }
 #search-button { padding: 10px 15px; background-color: #E8796A; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 16px; font-weight: 500; flex-shrink: 0; transition: background-color 0.2s ease; height: 40px; line-height: 1; margin-left: auto; }
 #search-button:hover { background-color: #D9685A; }
 .content, #transcript-plot-container { max-width: 1100px; margin: 30px auto; padding: 0 15px; }
 #transcript-plot-container { background-color: #FFFFFF; border: 1px solid #EAE8E5; border-radius: 12px; padding: 25px; min-height: 100px; display: none; overflow-x: auto; box-shadow: 0 5px 15px rgba(0, 0, 0, 0.04); }
 #transcript-plot-container h2 { text-align: center; margin-top: 0; margin-bottom: 25px; color: #4a4a4a; }
 #transcript-plot-svg { display: block; width: 100%; }
-#aso-table-header { display: flex; justify-content: space-between; align-items: center; margin-top: 20px; margin-bottom: 5px; padding: 0 5px; }
-#aso-table-subtitle { color: #4a4a4a; font-weight: 500; margin: 0; }
-#download-aso-table { color: #4a4a4a; text-decoration: none; font-size: 1.1em; line-height: 1; }
-#download-aso-table:hover { color: #E8796A; }
+
+/* Updated table header styles */
+#aso-table-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 20px;
+    margin-bottom: 15px;
+    padding: 0 10px;
+    position: relative; /* Set as positioning context */
+    height: 32px; /* Ensure consistent height for alignment */
+}
+
+#aso-table-subtitle { 
+    color: #4a4a4a; 
+    font-weight: 500; 
+    margin: 0; 
+    font-size: 1.1em;
+}
+
+.pagination-wrapper {
+    position: absolute; /* Position relative to the header */
+    left: 50%;
+    transform: translateX(-50%); /* The centering trick */
+}
+
+.action-buttons {
+    display: flex;
+    gap: 8px;
+}
+
+/* Inline pagination styles */
+.pagination-inline {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.page-btn-inline {
+    padding: 6px 10px;
+    background-color: #E8796A;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    transition: background-color 0.2s ease;
+    display: flex;
+    align-items: center;
+    height: 32px;
+}
+
+.page-btn-inline:hover:not(:disabled) { background-color: #D9685A; }
+.page-btn-inline:disabled { background-color: #ddd; cursor: not-allowed; }
+
+.page-info { 
+    display: flex; 
+    align-items: center; 
+    gap: 6px; 
+    color: #5a5a5a; 
+    font-size: 13px;
+    white-space: nowrap;
+}
+
+/* Action buttons (minimal icon style) */
+.icon-btn {
+    padding: 8px;
+    background-color: #6c757d;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: background-color 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+}
+
+.icon-btn:hover { background-color: #5a6268; }
+
 .hidden { display: none !important; }
 #results-container { margin-top: 10px; background-color: #FFFFFF; border-radius: 12px; border: 1px solid #EAE8E5; display: none; max-height: 500px; overflow-y: auto; overflow-x: auto; box-shadow: 0 5px 15px rgba(0, 0, 0, 0.04); }
 #results-container table { width: 100%; border-collapse: collapse; }
@@ -54,3 +129,46 @@ header h1 { font-family: "Libre Baskerville", serif; font-size: 2.5em; font-weig
 #about-popup p { margin-bottom: 15px; color: #5a5a5a; }
 #close-popup { position: absolute; top: 10px; right: 15px; background: none; border: none; font-size: 24px; color: #aaa; cursor: pointer; line-height: 1; padding: 0; transition: color 0.2s ease; }
 #close-popup:hover { color: #333; }
+
+/* Page loading overlay */
+.page-loading {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(250, 248, 245, 0.9);
+    display: none;
+    justify-content: center;
+    align-items: center;
+    z-index: 9999;
+    font-size: 18px;
+    color: #6c757d;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    #aso-table-header {
+        flex-direction: column;
+        gap: 15px;
+        align-items: stretch;
+        height: auto; /* Reset fixed height */
+        position: static; /* Reset positioning context */
+    }
+
+    .pagination-wrapper {
+        order: 2;
+        position: static; /* Reset absolute positioning */
+        transform: none; /* Reset transform */
+        justify-content: center;
+        display: flex;
+    }
+    #aso-table-subtitle {
+        order: 1;
+        text-align: center;
+    }
+    .action-buttons {
+        order: 3;
+        justify-content: center;
+    }
+}
