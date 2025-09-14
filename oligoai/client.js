@@ -41,15 +41,15 @@ function setupEventListeners() {
 }
 
 function getJobIdFromUrl() {
-    const match = window.location.pathname.match(/\/oligoscan\/([^\/]+)/);
+    const match = window.location.pathname.match(/\/oligoai\/([^\/]+)/);
     return match ? match[1] : null;
 }
 
 function updateUrl(jobId) {
     if (jobId) {
-        history.pushState({}, '', `/oligoscan/${jobId}`);
+        history.pushState({}, '', `/oligoai/${jobId}`);
     } else {
-        history.pushState({}, '', '/oligoscan');
+        history.pushState({}, '', '/oligoai');
     }
 }
 
@@ -70,6 +70,9 @@ async function loadFromJobId(jobId) {
         document.getElementById('gene-search').value = metadata.gene;
         document.getElementById('chemistry-input').value = metadata.chemistry.sugar;
         document.getElementById('backbone-input').value = metadata.chemistry.backbone;
+        document.getElementById('transfection-method-input').value = metadata.chemistry.transfectionMethod;
+        document.getElementById('dosage-input').value = metadata.chemistry.dosage;
+
 
         // Load gene visualization
         await loadGeneVisualization(metadata.gene);
@@ -145,11 +148,17 @@ async function handleTranscriptClick(transcript) {
         const geneName = document.getElementById('gene-search').value.trim();
         const sugar = document.getElementById('chemistry-input').value.trim();
         const backbone = document.getElementById('backbone-input').value.trim();
+        const transfectionMethod = document.getElementById('transfection-method-input').value.trim();
+        const dosage = parseInt(document.getElementById('dosage-input').value.trim(), 10);
+
+        if (isNaN(dosage) || dosage <= 0) {
+            throw new Error("Dosage must be a positive number.");
+        }
 
         const response = await fetch('/api/score-asos', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ geneName, transcriptId: transcript.id, sugar, backbone })
+            body: JSON.stringify({ geneName, transcriptId: transcript.id, sugar, backbone, transfectionMethod, dosage })
         });
 
         if (!response.ok) throw new Error((await response.json()).error || 'Failed to submit job');
@@ -162,7 +171,16 @@ async function handleTranscriptClick(transcript) {
         updateUrl(jobId);
 
         console.log(`Job submitted: ${jobId}`);
-        pollForCompletion(jobId);
+        // Check for immediate completion (cache hit)
+        const metaResponse = await fetch(`/api/results/${jobId}/meta`);
+        const metadata = await metaResponse.json();
+        if (metadata.status === 'completed') {
+            console.log("Cached result found, loading immediately.");
+            await loadResultsPage(jobId, 1);
+            setLoadingState(false, 'aso');
+        } else {
+            pollForCompletion(jobId);
+        }
 
     } catch (error) {
         showError(error.message, 'aso');
@@ -265,7 +283,7 @@ function displayASOTable(asoSequences) {
     const container = document.getElementById('results-container');
     container.innerHTML = '';
     const table = document.createElement('table');
-    table.innerHTML = `<tr><th>Genomic Coordinate</th><th>Region</th><th>Target Sequence</th><th>ASO Sequence</th><th>GC Content (%)</th><th>OligoScan Score</th></tr>`;
+    table.innerHTML = `<tr><th>Genomic Coordinate</th><th>Region</th><th>Target Sequence</th><th>ASO Sequence</th><th>GC Content (%)</th><th>OligoAI Score</th></tr>`;
 
     const sugarPattern = document.getElementById('chemistry-input').value;
     const isModified = (index) => {

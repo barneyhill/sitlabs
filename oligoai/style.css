@@ -3,23 +3,115 @@ h1, h2, h3 { color: #333; font-weight: 500; }
 header { background-color: transparent; padding: 40px 0 20px 0; text-align: center; }
 header h1 { font-family: "Libre Baskerville", serif; font-size: 2.5em; font-weight: 400; margin-bottom: 30px; color: #4a4a4a; }
 .search-container { max-width: 700px; margin: 0 auto; }
-#search-controls { display: flex; gap: 15px; align-items: flex-end; flex-wrap: wrap; background-color: #FFFFFF; border-radius: 12px; padding: 20px; box-shadow: 0 5px 15px rgba(0, 0, 0, 0.06); margin: 20px auto; }
-.chemistry-option { display: flex; flex-basis: 100%; gap: 15px; width: 100%; }
-#sugar-input-group, #backbone-input-group { flex-basis: calc(50% - 10px); flex-grow: 1; }
-.chemistry-option label { display: block; font-size: 0.8em; color: #666; margin-bottom: 3px; text-align: left; font-weight: 500; }
-#gene-search, #chemistry-input, #backbone-input { padding: 10px 12px; font-size: 15px; border: 1px solid #EAE8E5; border-radius: 8px; background-color: #FDFCFB; transition: border-color 0.2s ease; color: #5a5a5a; box-sizing: border-box; }
+
+/* --- Corrected Search Controls Layout --- */
+#search-controls {
+    display: flex;
+    flex-direction: column; /* Stack the two rows vertically */
+    gap: 15px;
+    background-color: #FFFFFF;
+    border-radius: 12px;
+    padding: 20px;
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.06);
+    margin: 20px auto;
+}
+
+#top-search-row {
+    display: flex;
+    gap: 15px;
+    align-items: flex-end;
+}
+
+#chemistry-options-wrapper {
+    display: flex; /* This is the second row */
+    gap: 15px;
+}
+
+/* --- Flexbox width control --- */
+#sugar-input-group,
+#backbone-input-group,
+#transfection-input-group {
+    flex: 1; /* These three take up an equal share of the remaining space */
+    min-width: 0;
+}
+
+#transfection-input-group {
+    flex: 0.8;
+}
+#dosage-input-group {
+    flex: 0.45; /* This box will be 60% of the width of the others */
+}
+
+
+label {
+    display: block;
+    font-size: 0.8em;
+    color: #666;
+    margin-bottom: 3px;
+    text-align: left;
+    font-weight: 500;
+}
+
+/* --- Input and Button Styling --- */
+input, select {
+    padding: 10px 12px;
+    font-size: 15px;
+    border: 1px solid #EAE8E5;
+    border-radius: 8px;
+    background-color: #FDFCFB;
+    transition: border-color 0.2s ease;
+    color: #5a5a5a;
+    box-sizing: border-box;
+    width: 100%;
+    height: 40px; /* Consistent height */
+}
+
+input:focus, select:focus {
+    outline: none;
+    border-color: #D3A99D;
+    background-color: #fff;
+}
+
+input::placeholder {
+    color: #aaa;
+    font-style: italic;
+}
+
+/* --- Hide arrows from number input --- */
+#dosage-input::-webkit-outer-spin-button,
+#dosage-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+#dosage-input {
+  -moz-appearance: textfield; /* Firefox */
+}
+
 #gene-search { flex-grow: 1; }
-#chemistry-input, #backbone-input { width: 100%; }
-#gene-search::placeholder, #chemistry-input::placeholder, #backbone-input::placeholder { color: #aaa; font-style: italic; }
-#gene-search:focus, #chemistry-input:focus, #backbone-input:focus { outline: none; border-color: #D3A99D; background-color: #fff; }
-#search-button { padding: 10px 15px; background-color: #E8796A; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 16px; font-weight: 500; flex-shrink: 0; transition: background-color 0.2s ease; height: 40px; line-height: 1; margin-left: auto; }
+
+#search-button {
+    padding: 10px 15px;
+    background-color: #E8796A;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 16px;
+    font-weight: 500;
+    flex-shrink: 0;
+    transition: background-color 0.2s ease;
+    height: 40px;
+    line-height: 1;
+}
 #search-button:hover { background-color: #D9685A; }
+
+
+/* --- Remainder of the CSS (Unchanged) --- */
 .content, #transcript-plot-container { max-width: 1100px; margin: 30px auto; padding: 0 15px; }
 #transcript-plot-container { background-color: #FFFFFF; border: 1px solid #EAE8E5; border-radius: 12px; padding: 25px; min-height: 100px; display: none; overflow-x: auto; box-shadow: 0 5px 15px rgba(0, 0, 0, 0.04); }
 #transcript-plot-container h2 { text-align: center; margin-top: 0; margin-bottom: 25px; color: #4a4a4a; }
 #transcript-plot-svg { display: block; width: 100%; }
 
-/* Updated table header styles */
 #aso-table-header {
     display: flex;
     justify-content: space-between;
@@ -27,21 +119,21 @@ header h1 { font-family: "Libre Baskerville", serif; font-size: 2.5em; font-weig
     margin-top: 20px;
     margin-bottom: 15px;
     padding: 0 10px;
-    position: relative; /* Set as positioning context */
-    height: 32px; /* Ensure consistent height for alignment */
+    position: relative;
+    height: 32px;
 }
 
-#aso-table-subtitle { 
-    color: #4a4a4a; 
-    font-weight: 500; 
-    margin: 0; 
+#aso-table-subtitle {
+    color: #4a4a4a;
+    font-weight: 500;
+    margin: 0;
     font-size: 1.1em;
 }
 
 .pagination-wrapper {
-    position: absolute; /* Position relative to the header */
+    position: absolute;
     left: 50%;
-    transform: translateX(-50%); /* The centering trick */
+    transform: translateX(-50%);
 }
 
 .action-buttons {
@@ -49,7 +141,6 @@ header h1 { font-family: "Libre Baskerville", serif; font-size: 2.5em; font-weig
     gap: 8px;
 }
 
-/* Inline pagination styles */
 .pagination-inline {
     display: flex;
     align-items: center;
@@ -73,16 +164,15 @@ header h1 { font-family: "Libre Baskerville", serif; font-size: 2.5em; font-weig
 .page-btn-inline:hover:not(:disabled) { background-color: #D9685A; }
 .page-btn-inline:disabled { background-color: #ddd; cursor: not-allowed; }
 
-.page-info { 
-    display: flex; 
-    align-items: center; 
-    gap: 6px; 
-    color: #5a5a5a; 
+.page-info {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: #5a5a5a;
     font-size: 13px;
     white-space: nowrap;
 }
 
-/* Action buttons (minimal icon style) */
 .icon-btn {
     padding: 8px;
     background-color: #6c757d;
@@ -130,7 +220,6 @@ header h1 { font-family: "Libre Baskerville", serif; font-size: 2.5em; font-weig
 #close-popup { position: absolute; top: 10px; right: 15px; background: none; border: none; font-size: 24px; color: #aaa; cursor: pointer; line-height: 1; padding: 0; transition: color 0.2s ease; }
 #close-popup:hover { color: #333; }
 
-/* Page loading overlay */
 .page-loading {
     position: fixed;
     top: 0;
@@ -146,20 +235,23 @@ header h1 { font-family: "Libre Baskerville", serif; font-size: 2.5em; font-weig
     color: #6c757d;
 }
 
-/* Responsive adjustments */
 @media (max-width: 768px) {
+    #chemistry-options-wrapper {
+        flex-wrap: wrap; /* Allow wrapping on small screens now */
+    }
+
     #aso-table-header {
         flex-direction: column;
         gap: 15px;
         align-items: stretch;
-        height: auto; /* Reset fixed height */
-        position: static; /* Reset positioning context */
+        height: auto;
+        position: static;
     }
 
     .pagination-wrapper {
         order: 2;
-        position: static; /* Reset absolute positioning */
-        transform: none; /* Reset transform */
+        position: static;
+        transform: none;
         justify-content: center;
         display: flex;
     }

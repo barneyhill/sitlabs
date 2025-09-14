@@ -3,26 +3,27 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>OligoScan</title>
+    <title>OligoAI</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&family=Libre+Baskerville:wght@400;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" integrity="sha512-SnH5WK+bZxgPHs44uWIX+LLJAJ9/2PkPKZ5QiAj6Ta86w+fsb2TkcmfRyVX3pBnMFcV7oQPJkl9QevSCWr3W6A==" crossorigin="anonymous" referrerpolicy="no-referrer" />
-    <link rel="stylesheet" href="/oligoscan/style.css">
-</head>
-<body>
+    <link rel="stylesheet" href="/oligoai/style.css">
+</head><body>
     <div id="page-loading" class="page-loading">Loading...</div>
 
     <a href="/" id="home-link">🔶&nbsp;&nbsp;Scientific Interface & Tooling Lab</a>
     <header>
         <a href="#" id="about-link">About</a>
         <div class="search-container">
-            <h1>OligoScan</h1>
+            <h1>OligoAI</h1>
             <p class="subtitle">Design effective antisense oligonucleotides</p>
             <div id="search-controls">
-                <input type="text" id="gene-search" placeholder="Enter gene name... (e.g. 'FGFR3')" value="FGFR3">
-                <button id="search-button">Search</button>
-                <div id="chemistry-options-wrapper" class="chemistry-option">
+                <div id="top-search-row">
+                    <input type="text" id="gene-search" placeholder="Enter gene name... (e.g. 'FGFR3')" value="FGFR3">
+                    <button id="search-button">Search</button>
+                </div>
+                <div id="chemistry-options-wrapper">
                     <div id="sugar-input-group">
                         <label for="chemistry-input">Sugar Modifications</label>
                         <input type="text" id="chemistry-input" placeholder="(Nx)(MOE,DNA,cEt)(,)" value="5xMOE,10xDNA,5xMOE">
@@ -30,6 +31,19 @@
                     <div id="backbone-input-group">
                         <label for="backbone-input">Backbone Modifications</label>
                         <input type="text" id="backbone-input" placeholder="'s' (PS) / 'o' (PD)" value="sssssssssssssssssss">
+                    </div>
+                    <div id="transfection-input-group">
+                        <label for="transfection-method-input">Transfection Method</label>
+                        <select id="transfection-method-input">
+                            <option value="Electroporation" selected>Electroporation</option>
+                            <option value="Gymnosis">Gymnosis</option>
+                            <option value="Lipofection">Lipofection</option>
+                            <option value="Other">Other</option>
+                        </select>
+                    </div>
+                    <div id="dosage-input-group">
+                        <label for="dosage-input">Dosage (nM)</label>
+                        <input type="number" id="dosage-input" value="4000">
                     </div>
                 </div>
             </div>
@@ -79,12 +93,12 @@
     <div id="popup-overlay" class="hidden"></div>
     <div id="about-popup" class="hidden">
         <button id="close-popup">&times;</button>
-        <h2>About OligoScan</h2>
+        <h2>About OligoAI</h2>
         <p>This tool predicts the efficacy of RNAse-H1 mediated antisense oligonucleotides (ASOs) based on their sequence and chemical modifications.</p>
         <p>Enter a gene name, select a transcript, define the ASO chemistry, and view predicted scores from our backend model.</p>
         <p><em>Model details and citation will go here.</em></p>
     </div>
 
-    <script src="/oligoscan/client.js"></script>
+    <script src="/oligoai/client.js"></script>
 </body>
 </html>
