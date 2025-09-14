@@ -8,6 +8,7 @@ let currentJobId = null;
 let currentPage = 1;
 let totalPages = 1;
 let currentResults = [];
+let emailModalShown = false;
 
 document.addEventListener('DOMContentLoaded', async () => {
     setupEventListeners();
@@ -31,10 +32,19 @@ function setupEventListeners() {
     document.getElementById('close-popup').addEventListener('click', () => togglePopup(false));
     document.getElementById('popup-overlay').addEventListener('click', () => togglePopup(false));
 
+    // Email modal event listeners
+    document.getElementById('email-modal-overlay').addEventListener('click', () => closeEmailModal());
+    document.getElementById('close-email-modal').addEventListener('click', () => closeEmailModal());
+    document.getElementById('submit-with-email').addEventListener('click', () => submitWithEmail());
+    document.getElementById('submit-without-email').addEventListener('click', () => submitWithoutEmail());
+    document.getElementById('user-email-input').addEventListener('keypress', e => {
+        if (e.key === 'Enter') submitWithEmail();
+    });
+
     // Pagination controls
     document.getElementById('prev-page').addEventListener('click', () => changePage(currentPage - 1));
     document.getElementById('next-page').addEventListener('click', () => changePage(currentPage + 1));
-    
+
     // Action buttons
     document.getElementById('download-csv').addEventListener('click', downloadAllCsv);
     document.getElementById('copy-link').addEventListener('click', copyShareableLink);
@@ -131,7 +141,12 @@ async function handleGeneSearch() {
     }
 }
 
+// Store the selected transcript for later use
+let selectedTranscript = null;
+
 async function handleTranscriptClick(transcript) {
+    selectedTranscript = transcript;
+    
     // Cancel any previous job
     if (activeRunpodJobId) {
         console.log(`Cancelling previous job: ${activeRunpodJobId}`);
@@ -142,8 +157,12 @@ async function handleTranscriptClick(transcript) {
     }
 
     resetResultsState();
-    setLoadingState(true, 'aso', `Submitting job for ${transcript.name || transcript.id}...`);
+    setLoadingState(true, 'aso', `Preparing job for ${transcript.name || transcript.id}...`);
 
+    await submitJobWithOptionalEmail();
+}
+
+async function submitJobWithOptionalEmail(userEmail = null) {
     try {
         const geneName = document.getElementById('gene-search').value.trim();
         const sugar = document.getElementById('chemistry-input').value.trim();
@@ -155,36 +174,101 @@ async function handleTranscriptClick(transcript) {
             throw new Error("Dosage must be a positive number.");
         }
 
+        const requestBody = { 
+            geneName, 
+            transcriptId: selectedTranscript.id, 
+            sugar, 
+            backbone, 
+            transfectionMethod, 
+            dosage 
+        };
+
+        if (userEmail) {
+            requestBody.userEmail = userEmail;
+        }
+
         const response = await fetch('/api/score-asos', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ geneName, transcriptId: transcript.id, sugar, backbone, transfectionMethod, dosage })
+            body: JSON.stringify(requestBody)
         });
 
         if (!response.ok) throw new Error((await response.json()).error || 'Failed to submit job');
 
-        const { jobId } = await response.json();
+        const { jobId, cached } = await response.json();
         activeRunpodJobId = jobId;
         currentJobId = jobId;
 
         // Update URL immediately
         updateUrl(jobId);
 
-        console.log(`Job submitted: ${jobId}`);
-        // Check for immediate completion (cache hit)
-        const metaResponse = await fetch(`/api/results/${jobId}/meta`);
-        const metadata = await metaResponse.json();
-        if (metadata.status === 'completed') {
+        console.log(`Job submitted: ${jobId}, cached: ${cached}`);
+        
+        if (cached) {
+            // Cached result found, load immediately
             console.log("Cached result found, loading immediately.");
             await loadResultsPage(jobId, 1);
             setLoadingState(false, 'aso');
         } else {
-            pollForCompletion(jobId);
+            // New job, show email modal if not already shown
+            if (!emailModalShown && !userEmail) {
+                emailModalShown = true;
+                showEmailModal();
+            } else {
+                pollForCompletion(jobId);
+            }
         }
 
     } catch (error) {
         showError(error.message, 'aso');
         setLoadingState(false, 'aso');
+    }
+}
+
+function showEmailModal() {
+    document.getElementById('email-modal').classList.remove('hidden');
+    document.getElementById('email-modal-overlay').classList.remove('hidden');
+    document.getElementById('user-email-input').focus();
+    
+    // Update modal content with job details
+    const geneName = document.getElementById('gene-search').value.trim();
+    const transcriptName = selectedTranscript?.name || selectedTranscript?.id || '';
+    document.getElementById('email-modal-gene').textContent = `${geneName} - ${transcriptName}`;
+}
+
+function closeEmailModal() {
+    document.getElementById('email-modal').classList.add('hidden');
+    document.getElementById('email-modal-overlay').classList.add('hidden');
+}
+
+async function submitWithEmail() {
+    const emailInput = document.getElementById('user-email-input');
+    const email = emailInput.value.trim();
+    
+    if (!email) {
+        emailInput.classList.add('error');
+        return;
+    }
+    
+    // Basic email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+        emailInput.classList.add('error');
+        return;
+    }
+    
+    closeEmailModal();
+    
+    // Re-submit the job with email
+    activeRunpodJobId = null; // Reset to allow resubmission
+    await submitJobWithOptionalEmail(email);
+}
+
+function submitWithoutEmail() {
+    closeEmailModal();
+    // Continue with the already submitted job
+    if (activeRunpodJobId) {
+        pollForCompletion(activeRunpodJobId);
     }
 }
 
@@ -435,6 +519,7 @@ function resetUIState() {
     document.getElementById('transcript-plot-svg').innerHTML = '';
     resetResultsState();
     updateUrl(null);
+    emailModalShown = false;
 }
 function resetResultsState() {
     document.getElementById('results-container').style.display = 'none';

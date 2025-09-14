@@ -2,6 +2,11 @@ import { z } from 'zod';
 import path from 'path';
 import runpodSdk from "runpod-sdk";
 import { gunzipSync, gzipSync } from 'bun';
+import { Resend } from 'resend';
+
+// --- Resend Email Client ---
+const RESEND_API_KEY = Bun.env.RESEND_API_KEY; 
+const resend = new Resend(RESEND_API_KEY);
 
 // --- Zod Schemas ---
 const ScoreAsosBodySchema = z.object({
@@ -11,6 +16,7 @@ const ScoreAsosBodySchema = z.object({
   backbone: z.string().min(1),
   transfectionMethod: z.string().min(1),
   dosage: z.number().positive(),
+  userEmail: z.string().email().optional(),
 });
 
 // --- Type Definitions ---
@@ -32,6 +38,7 @@ interface JobMetadata {
     transfectionMethod: string;
     dosage: number;
   };
+  userEmail?: string;
   totalResults: number;
   createdAt: string;
   status: 'pending' | 'completed' | 'failed';
@@ -61,6 +68,74 @@ const endpoint = runpod.endpoint(RUNPOD_ENDPOINT_ID);
 const RESULTS_DIR = path.join(import.meta.dir, 'results');
 if (!await Bun.file(RESULTS_DIR).exists()) {
     await Bun.write(path.join(RESULTS_DIR, '.gitkeep'), '');
+}
+
+// --- Email Sending Function ---
+async function sendCompletionEmail(userEmail: string, jobId: string, metadata: JobMetadata) {
+    try {
+        const resultUrl = `https://sitlabs.org/oligoai/${jobId}`;
+        
+        const emailHtml = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <style>
+                body { font-family: 'Inter', Arial, sans-serif; color: #5a5a5a; line-height: 1.6; }
+                .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+                .header { background-color: #FAF8F5; padding: 30px; text-align: center; border-radius: 12px 12px 0 0; }
+                .title { font-family: 'Libre Baskerville', serif; font-size: 28px; color: #4a4a4a; margin: 0; }
+                .content { background-color: #FFFFFF; padding: 30px; border: 1px solid #EAE8E5; border-radius: 0 0 12px 12px; }
+                .details { background-color: #F7F5F2; padding: 15px; border-radius: 8px; margin: 20px 0; }
+                .button { display: inline-block; padding: 12px 24px; background-color: #E8796A; color: white; text-decoration: none; border-radius: 8px; font-weight: 500; margin-top: 20px; }
+                .button:hover { background-color: #D9685A; }
+                .footer { text-align: center; margin-top: 30px; font-size: 12px; color: #999; }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="header">
+                    <h1 class="title">OligoAI</h1>
+                    <p style="margin: 10px 0 0; color: #6c757d;">Your ASO design is complete!</p>
+                </div>
+                <div class="content">
+                    <h2 style="color: #333;">Analysis Complete</h2>
+                    <p>Your antisense oligonucleotide design for <strong>${metadata.gene}</strong> has been successfully completed.</p>
+                    
+                    <div class="details">
+                        <p style="margin: 5px 0;"><strong>Gene:</strong> ${metadata.gene}</p>
+                        <p style="margin: 5px 0;"><strong>Transcript:</strong> ${metadata.transcriptName}</p>
+                        <p style="margin: 5px 0;"><strong>Total ASOs scored:</strong> ${metadata.totalResults.toLocaleString()}</p>
+                        <p style="margin: 5px 0;"><strong>Chemistry:</strong> ${metadata.chemistry.sugar} / ${metadata.chemistry.backbone}</p>
+                        <p style="margin: 5px 0;"><strong>Method:</strong> ${metadata.chemistry.transfectionMethod} (${metadata.chemistry.dosage} nM)</p>
+                    </div>
+                    
+                    <p>Your results are ready for viewing and download:</p>
+                    
+                    <div style="text-align: center;">
+                        <a href="${resultUrl}" class="button">View Results</a>
+                    </div>
+                    
+                    <div class="footer">
+                        <p>This link will remain active for 30 days.</p>
+                        <p>© Scientific Interface & Tooling Lab</p>
+                    </div>
+                </div>
+            </div>
+        </body>
+        </html>
+        `;
+
+        await resend.emails.send({
+            from: 'OligoAI <oligoai@sitlabs.org>',
+            to: [userEmail],
+            subject: `OligoAI: Your ${metadata.gene} ASO design is ready`,
+            html: emailHtml,
+        });
+
+        console.log(`Completion email sent to ${userEmail} for job ${jobId}`);
+    } catch (error) {
+        console.error(`Failed to send email to ${userEmail}:`, error);
+    }
 }
 
 // --- Main Server Logic ---
@@ -109,8 +184,8 @@ Bun.serve({
                 console.error("Validation error:", validation.error);
                 return new Response(JSON.stringify({ error: "Invalid request body" }), { status: 400 });
             }
-            const jobId = await submitRunpodJob(validation.data);
-            return new Response(JSON.stringify({ jobId }), { headers: { 'Content-Type': 'application/json' } });
+            const { jobId, cached } = await submitRunpodJob(validation.data);
+            return new Response(JSON.stringify({ jobId, cached }), { headers: { 'Content-Type': 'application/json' } });
         } catch (error: any) {
           console.error("Error submitting RunPod job:", error);
           return new Response(JSON.stringify({ error: error.message }), { status: 500 });
@@ -135,7 +210,7 @@ Bun.serve({
             return new Response(JSON.stringify({ error: error.message }), { status: 500 });
           }
         }
-        
+
         const readAndDecompressResults = async (jobId: string): Promise<EnrichedAso[]> => {
             const resultsPath = path.join(RESULTS_DIR, `${jobId}.json.gz`);
             const resultsFile = Bun.file(resultsPath);
@@ -197,11 +272,11 @@ Bun.serve({
             return new Response(JSON.stringify({ error: error.message }), { status: 500 });
         }
       }
-      
+
       if (req.method === 'GET' && pathname.startsWith('/api/job-status/')) {
         const jobId = pathname.split('/').pop();
         if (!jobId) return new Response(JSON.stringify({ error: "Job ID required" }), { status: 400 });
-        
+
         try {
             const metaPath = path.join(RESULTS_DIR, `${jobId}.meta.json`);
             const metaFile = Bun.file(metaPath);
@@ -224,7 +299,7 @@ Bun.serve({
                 metadata.status = 'failed';
                 await Bun.write(metaPath, JSON.stringify(metadata, null, 2));
             }
-            
+
             const statusToReport = runpodStatus.status === 'COMPLETED' ? 'IN_PROGRESS' : runpodStatus.status;
 
             return new Response(JSON.stringify({ status: statusToReport }), {
@@ -306,11 +381,11 @@ async function submitRunpodJob(data: z.infer<typeof ScoreAsosBodySchema>) {
     // --- CACHE CHECK ---
     const cachedJobId = await findCompletedJob(data);
     if (cachedJobId) {
-        return cachedJobId;
+        return { jobId: cachedJobId, cached: true };
     }
     // --- END CACHE CHECK ---
 
-    const { geneName, transcriptId, sugar, backbone, transfectionMethod, dosage } = data;
+    const { geneName, transcriptId, sugar, backbone, transfectionMethod, dosage, userEmail } = data;
     const { targetRna, gene, transcript } = await getTranscriptSequence(geneName, transcriptId);
     const { sugarMods, backboneMods, asoLength } = formatChemistryForApi(sugar, backbone);
 
@@ -339,6 +414,7 @@ async function submitRunpodJob(data: z.infer<typeof ScoreAsosBodySchema>) {
         transcriptId: transcript.id,
         transcriptName: transcript.name || transcript.id,
         chemistry: { sugar, backbone, transfectionMethod, dosage },
+        userEmail,
         totalResults: 0,
         createdAt: new Date().toISOString(),
         status: 'pending'
@@ -352,7 +428,7 @@ async function submitRunpodJob(data: z.infer<typeof ScoreAsosBodySchema>) {
     // Start background processing
     processJobInBackground(jobId, targetRna, gene, transcript, asoLength);
 
-    return jobId;
+    return { jobId, cached: false };
 }
 
 async function processJobInBackground(jobId: string, targetRna: string, gene: GffFeature, transcript: GffFeature, asoLength: number) {
@@ -385,13 +461,19 @@ async function processJobInBackground(jobId: string, targetRna: string, gene: Gf
                 const compressedData = gzipSync(Buffer.from(jsonData));
                 await Bun.write(path.join(RESULTS_DIR, `${jobId}.json.gz`), compressedData);
 
-                // This is the final step. Only after this write is the job truly 'completed'.
+                // Update metadata
                 const metadata: JobMetadata = await Bun.file(metaPath).json();
                 metadata.status = 'completed';
                 metadata.totalResults = enrichedResults.length;
                 await Bun.write(metaPath, JSON.stringify(metadata, null, 2));
 
                 console.log(`Job ${jobId} results saved and status updated to completed.`);
+
+                // Send email notification if user provided email
+                if (metadata.userEmail) {
+                    await sendCompletionEmail(metadata.userEmail, jobId, metadata);
+                }
+
                 return; // Exit the function successfully
             } else if (status.status === 'FAILED') {
                 throw new Error(status.error || 'Job failed on RunPod');
@@ -404,7 +486,7 @@ async function processJobInBackground(jobId: string, targetRna: string, gene: Gf
         throw new Error('Job timed out');
     } catch (error: any) {
         console.error(`Error processing job ${jobId}:`, error);
-        
+
         const metaPath = path.join(RESULTS_DIR, `${jobId}.meta.json`);
         if (await Bun.file(metaPath).exists()) {
             const metadata: JobMetadata = await Bun.file(metaPath).json();

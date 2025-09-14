@@ -99,6 +99,36 @@
         <p><em>Model details and citation will go here.</em></p>
     </div>
 
+    <!-- Email Notification Modal -->
+    <div id="email-modal-overlay" class="hidden"></div>
+    <div id="email-modal" class="hidden">
+        <button id="close-email-modal">&times;</button>
+        <div class="email-modal-content">
+            <div class="email-modal-icon">
+                <i class="fa-solid fa-envelope"></i>
+            </div>
+            <h2>Get notified when your analysis is ready</h2>
+            <p class="email-modal-subtitle">
+                Your ASO design for <strong id="email-modal-gene"></strong> may take a few minutes.
+                Enter your email to receive a notification when it's complete.
+            </p>
+            
+            <div class="email-input-group">
+                <input type="email" id="user-email-input" placeholder="your.email@example.com">
+                <div class="email-hint">We'll only use this to notify you about this specific job.</div>
+            </div>
+
+            <div class="email-modal-buttons">
+                <button id="submit-with-email" class="primary-btn">
+                    <i class="fa-solid fa-paper-plane"></i> Notify me
+                </button>
+                <button id="submit-without-email" class="secondary-btn">
+                    I'll wait here
+                </button>
+            </div>
+        </div>
+    </div>
+
     <script src="/oligoai/client.js"></script>
 </body>
 </html>
