@@ -5,7 +5,7 @@ import { gunzipSync, gzipSync } from 'bun';
 import { Resend } from 'resend';
 
 // --- Resend Email Client ---
-const RESEND_API_KEY = Bun.env.RESEND_API_KEY; 
+const RESEND_API_KEY = Bun.env.RESEND_API_KEY;
 const resend = new Resend(RESEND_API_KEY);
 
 // --- Zod Schemas ---
@@ -74,7 +74,7 @@ if (!await Bun.file(RESULTS_DIR).exists()) {
 async function sendCompletionEmail(userEmail: string, jobId: string, metadata: JobMetadata) {
     try {
         const resultUrl = `https://sitlabs.org/oligoai/${jobId}`;
-        
+
         const emailHtml = `
         <!DOCTYPE html>
         <html>
@@ -100,7 +100,7 @@ async function sendCompletionEmail(userEmail: string, jobId: string, metadata: J
                 <div class="content">
                     <h2 style="color: #333;">Analysis Complete</h2>
                     <p>Your antisense oligonucleotide design for <strong>${metadata.gene}</strong> has been successfully completed.</p>
-                    
+
                     <div class="details">
                         <p style="margin: 5px 0;"><strong>Gene:</strong> ${metadata.gene}</p>
                         <p style="margin: 5px 0;"><strong>Transcript:</strong> ${metadata.transcriptName}</p>
@@ -108,13 +108,13 @@ async function sendCompletionEmail(userEmail: string, jobId: string, metadata: J
                         <p style="margin: 5px 0;"><strong>Chemistry:</strong> ${metadata.chemistry.sugar} / ${metadata.chemistry.backbone}</p>
                         <p style="margin: 5px 0;"><strong>Method:</strong> ${metadata.chemistry.transfectionMethod} (${metadata.chemistry.dosage} nM)</p>
                     </div>
-                    
+
                     <p>Your results are ready for viewing and download:</p>
-                    
+
                     <div style="text-align: center;">
                         <a href="${resultUrl}" class="button">View Results</a>
                     </div>
-                    
+
                     <div class="footer">
                         <p>This link will remain active for 30 days.</p>
                         <p>© Scientific Interface & Tooling Lab</p>
@@ -143,7 +143,7 @@ console.log("Starting SITLabs server with Bun...");
 const projectRoot = import.meta.dir;
 
 Bun.serve({
-  port: 80,
+  port: 8080,
   async fetch(req) {
     const url = new URL(req.url);
     const pathname = url.pathname;
@@ -173,6 +173,22 @@ Bun.serve({
           return new Response(JSON.stringify(gffData), { headers: { 'Content-Type': 'application/json' } });
         } catch (error: any) {
           return new Response(JSON.stringify({ error: error.message }), { status: 404 });
+        }
+      }
+
+      if (req.method === 'POST' && pathname === '/api/check-cache') {
+        try {
+          const body = await req.json();
+          const validation = ScoreAsosBodySchema.safeParse(body);
+          if (!validation.success) {
+              console.error("Validation error:", validation.error);
+              return new Response(JSON.stringify({ error: "Invalid request body" }), { status: 400 });
+          }
+          const cachedJobId = await findCompletedJob(validation.data);
+          return new Response(JSON.stringify({ cachedJobId }), { headers: { 'Content-Type': 'application/json' } });
+        } catch (error: any) {
+          console.error("Error checking cache:", error);
+          return new Response(JSON.stringify({ error: error.message }), { status: 500 });
         }
       }
 
@@ -344,7 +360,7 @@ Bun.serve({
   }
 });
 
-console.log(`Server listening on http://localhost:80`);
+console.log(`Server listening on http://localhost:8080`);
 
 // --- Backend Logic Functions ---
 

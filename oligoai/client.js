@@ -146,7 +146,7 @@ let selectedTranscript = null;
 
 async function handleTranscriptClick(transcript) {
     selectedTranscript = transcript;
-    
+
     // Cancel any previous job
     if (activeRunpodJobId) {
         console.log(`Cancelling previous job: ${activeRunpodJobId}`);
@@ -159,10 +159,54 @@ async function handleTranscriptClick(transcript) {
     resetResultsState();
     setLoadingState(true, 'aso', `Preparing job for ${transcript.name || transcript.id}...`);
 
-    await submitJobWithOptionalEmail();
+    const geneName = document.getElementById('gene-search').value.trim();
+    const sugar = document.getElementById('chemistry-input').value.trim();
+    const backbone = document.getElementById('backbone-input').value.trim();
+    const transfectionMethod = document.getElementById('transfection-method-input').value.trim();
+    const dosage = parseInt(document.getElementById('dosage-input').value.trim(), 10);
+
+    if (isNaN(dosage) || dosage <= 0) {
+        showError("Dosage must be a positive number.", 'aso');
+        setLoadingState(false, 'aso');
+        return;
+    }
+
+    const requestBody = {
+        geneName,
+        transcriptId: selectedTranscript.id,
+        sugar,
+        backbone,
+        transfectionMethod,
+        dosage
+    };
+
+    try {
+        const checkResponse = await fetch('/api/check-cache', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(requestBody)
+        });
+
+        if (!checkResponse.ok) throw new Error((await checkResponse.json()).error || 'Failed to check cache');
+
+        const { cachedJobId } = await checkResponse.json();
+
+        if (cachedJobId) {
+            currentJobId = cachedJobId;
+            updateUrl(cachedJobId);
+            await loadResultsPage(cachedJobId, 1);
+            setLoadingState(false, 'aso');
+        } else {
+            emailModalShown = true;
+            showEmailModal();
+        }
+    } catch (error) {
+        showError(error.message, 'aso');
+        setLoadingState(false, 'aso');
+    }
 }
 
-async function submitJobWithOptionalEmail(userEmail = null) {
+async function submitJob(userEmail = null) {
     try {
         const geneName = document.getElementById('gene-search').value.trim();
         const sugar = document.getElementById('chemistry-input').value.trim();
@@ -170,17 +214,13 @@ async function submitJobWithOptionalEmail(userEmail = null) {
         const transfectionMethod = document.getElementById('transfection-method-input').value.trim();
         const dosage = parseInt(document.getElementById('dosage-input').value.trim(), 10);
 
-        if (isNaN(dosage) || dosage <= 0) {
-            throw new Error("Dosage must be a positive number.");
-        }
-
-        const requestBody = { 
-            geneName, 
-            transcriptId: selectedTranscript.id, 
-            sugar, 
-            backbone, 
-            transfectionMethod, 
-            dosage 
+        const requestBody = {
+            geneName,
+            transcriptId: selectedTranscript.id,
+            sugar,
+            backbone,
+            transfectionMethod,
+            dosage
         };
 
         if (userEmail) {
@@ -203,22 +243,15 @@ async function submitJobWithOptionalEmail(userEmail = null) {
         updateUrl(jobId);
 
         console.log(`Job submitted: ${jobId}, cached: ${cached}`);
-        
+
         if (cached) {
             // Cached result found, load immediately
             console.log("Cached result found, loading immediately.");
             await loadResultsPage(jobId, 1);
             setLoadingState(false, 'aso');
         } else {
-            // New job, show email modal if not already shown
-            if (!emailModalShown && !userEmail) {
-                emailModalShown = true;
-                showEmailModal();
-            } else {
-                pollForCompletion(jobId);
-            }
+            pollForCompletion(jobId);
         }
-
     } catch (error) {
         showError(error.message, 'aso');
         setLoadingState(false, 'aso');
@@ -229,7 +262,7 @@ function showEmailModal() {
     document.getElementById('email-modal').classList.remove('hidden');
     document.getElementById('email-modal-overlay').classList.remove('hidden');
     document.getElementById('user-email-input').focus();
-    
+
     // Update modal content with job details
     const geneName = document.getElementById('gene-search').value.trim();
     const transcriptName = selectedTranscript?.name || selectedTranscript?.id || '';
@@ -244,32 +277,26 @@ function closeEmailModal() {
 async function submitWithEmail() {
     const emailInput = document.getElementById('user-email-input');
     const email = emailInput.value.trim();
-    
+
     if (!email) {
         emailInput.classList.add('error');
         return;
     }
-    
+
     // Basic email validation
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
         emailInput.classList.add('error');
         return;
     }
-    
+
     closeEmailModal();
-    
-    // Re-submit the job with email
-    activeRunpodJobId = null; // Reset to allow resubmission
-    await submitJobWithOptionalEmail(email);
+    submitJob(email);
 }
 
 function submitWithoutEmail() {
     closeEmailModal();
-    // Continue with the already submitted job
-    if (activeRunpodJobId) {
-        pollForCompletion(activeRunpodJobId);
-    }
+    submitJob();
 }
 
 function pollForCompletion(jobId) {
