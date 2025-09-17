@@ -1,0 +1,17 @@
+{
+  "jobId": "5b5c05cb-17ab-4ff3-96a5-8f9fad8fcdfa-e1",
+  "gene": "KCNT2",
+  "requestedGeneName": "KCNT2",
+  "transcriptId": "transcript:ENST00000466914",
+  "transcriptName": "KCNT2-204",
+  "chemistry": {
+    "sugar": "5xMOE,10xDNA,5xMOE",
+    "backbone": "sssssssssssssssssss",
+    "transfectionMethod": "Electroporation",
+    "dosage": 4000
+  },
+  "userEmail": "barneyhill1@gmail.com",
+  "totalResults": 0,
+  "createdAt": "2025-09-17T09:51:27.211Z",
+  "status": "pending"
+}

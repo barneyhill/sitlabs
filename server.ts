@@ -70,6 +70,23 @@ if (!await Bun.file(RESULTS_DIR).exists()) {
     await Bun.write(path.join(RESULTS_DIR, '.gitkeep'), '');
 }
 
+import { basename } from "path";
+
+function sanitizeGeneName(geneName: string): string {
+  if (!geneName || typeof geneName !== 'string') {
+    throw new Error('Gene name must be a non-empty string');
+  }
+
+  // Use path.basename to remove any path traversal attempts
+  let sanitized = basename(geneName.trim());
+  
+  return sanitized
+    .toUpperCase()
+    .replace(/[^A-Z0-9\-_.]/g, '_')
+    .replace(/_{2,}/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
 // --- Email Sending Function ---
 async function sendCompletionEmail(userEmail: string, jobId: string, metadata: JobMetadata) {
     try {
@@ -513,7 +530,7 @@ async function processJobInBackground(jobId: string, targetRna: string, gene: Gf
 }
 
 function reverseComplement(rna: string): string {
-    const complement: Record<string, string> = {'A': 'T', 'U': 'A', 'G': 'C', 'C': 'G'};
+    const complement: Record<string, string> = {'A': 'T', 'T': 'A', 'G': 'C', 'C': 'G'};
     return rna.split('').reverse().map(base => complement[base] || base).join('');
 }
 
@@ -528,8 +545,8 @@ function reconstructAndEnrichAsos(
     const calculateGC = (seq: string) => (seq.match(/[GC]/g) || []).length / seq.length * 100;
 
     return positions.map((pos, i) => {
-        const targetSequence = targetRna.substring(pos, pos + asoLength);
-        const asoSequence = reverseComplement(targetSequence.replace(/T/g, 'U'));
+        const targetSequence = targetRna.substring(pos, pos + asoLength).replace(/T/g, 'U');
+        const asoSequence = reverseComplement(targetSequence);
         const genomicPosition = gene.start + pos;
 
         return {
@@ -544,7 +561,6 @@ function reconstructAndEnrichAsos(
     });
 }
 
-// All other helper functions remain the same
 async function getGffData(geneName: string): Promise<any> {
   const gffPath = path.join(projectRoot, 'oligoai', 'gene_sequences', `${geneName}.gff3.gz`);
   const gffFile = Bun.file(gffPath);
@@ -555,8 +571,9 @@ async function getGffData(geneName: string): Promise<any> {
 }
 
 async function getTranscriptSequence(geneName: string, transcriptId: string) {
-    const gffData = await getGffData(geneName);
-    const fastaPath = path.join(projectRoot, 'oligoai', 'gene_sequences', `${geneName}.fa.gz`);
+    const sanitizedGeneName: string = sanitizeGeneName(geneName);
+    const gffData = await getGffData(sanitizedGeneName);
+    const fastaPath = path.join(projectRoot, 'oligoai', 'gene_sequences', `${sanitizedGeneName}.fa.gz`);
     const fastaFile = Bun.file(fastaPath);
     if (!(await fastaFile.exists())) throw new Error(`FASTA file not found for gene: ${geneName}`);
     const fileBuffer = await fastaFile.arrayBuffer();
@@ -569,7 +586,21 @@ async function getTranscriptSequence(geneName: string, transcriptId: string) {
     if (!gene || !transcript) throw new Error(`Transcript ID ${transcriptId} not found for gene ${geneName}`);
     const startIndex = transcript.start - gene.start;
     const endIndex = transcript.end - gene.start + 1;
-    return { targetRna: fullSequence.substring(startIndex, endIndex), gene, transcript };
+    
+    // Extract the transcript DNA sequence
+    let transcriptDna = fullSequence.substring(startIndex, endIndex);
+    
+    // Convert DNA to pre-mRNA considering strand
+    let preMrna: string;
+    if (gene.strand === '-') {
+        // For minus strand genes, reverse complement the DNA sequence
+        preMrna = reverseComplement(transcriptDna);
+    } else {
+        // For plus strand genes, just convert T to U
+        preMrna = transcriptDna;
+    }
+    
+    return { targetRna: preMrna, gene, transcript };
 }
 
 function formatChemistryForApi(sugarString: string, backboneString: string) {
