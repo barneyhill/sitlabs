@@ -482,11 +482,10 @@ function renderTranscripts(gffData, svgElement) {
     const container = document.getElementById('transcript-plot-container');
     let svgWidth = svgElement.clientWidth || container.clientWidth || 800;
     
-    // If still getting 0, force a reflow and try again
     if (svgWidth === 0) {
         container.style.display = 'block';
         svgElement.style.width = '100%';
-        svgWidth = svgElement.getBoundingClientRect().width || 1100 - 50; // fallback to container max-width minus padding
+        svgWidth = svgElement.getBoundingClientRect().width || 1100 - 50;
     }
     
     const plotWidth = svgWidth - p.l - p.r;
@@ -503,12 +502,26 @@ function renderTranscripts(gffData, svgElement) {
         const yCenter = p.t + index * (trackH + trackS) + (trackH / 2);
         const firstExon = transcript.exons[0];
         const lastExon = transcript.exons[transcript.exons.length - 1];
-        g.innerHTML = `
+        
+        // Add invisible background rectangle for full-row clicking
+        const backgroundRect = document.createElementNS(svgNS, 'rect');
+        backgroundRect.setAttribute('x', '0');
+        backgroundRect.setAttribute('y', yCenter - trackH/2 - 5);
+        backgroundRect.setAttribute('width', svgWidth);
+        backgroundRect.setAttribute('height', trackH + 10);
+        backgroundRect.setAttribute('fill', 'transparent');
+        backgroundRect.classList.add('transcript-row-bg');
+        g.appendChild(backgroundRect);
+        
+        // Add the visible elements
+        const elements = `
             <text x="${p.l - 10}" y="${yCenter + 4}" font-size="10px" text-anchor="end" ${transcript.isCanonical ? 'font-weight="bold"' : ''}>${transcript.name || transcript.id.split(':').pop()}</text>
             <line x1="${scaleX(firstExon?.start ?? transcript.start)}" y1="${yCenter}" x2="${scaleX(lastExon?.end ?? transcript.end)}" y2="${yCenter}" stroke="#999"></line>
             ${(transcript.utrs || []).map(utr => `<rect x="${scaleX(utr.start)}" y="${yCenter - featH/2}" width="${Math.max(1, scaleX(utr.end) - scaleX(utr.start))}" height="${featH}" fill="#a9a9a9"></rect>`).join('')}
             ${(transcript.cds || []).map(cds => `<rect x="${scaleX(cds.start)}" y="${yCenter - cdsH/2}" width="${Math.max(1, scaleX(cds.end) - scaleX(cds.start))}" height="${cdsH}" fill="#007bff"></rect>`).join('')}
         `;
+        g.insertAdjacentHTML('beforeend', elements);
+        
         g.addEventListener('click', () => {
             document.querySelectorAll('.transcript-row.selected').forEach(el => el.classList.remove('selected'));
             g.classList.add('selected');
