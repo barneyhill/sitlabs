@@ -112,8 +112,15 @@ async function loadGeneVisualization(geneName) {
     if (!response.ok) throw new Error(`Gene '${geneName}' not found`);
     currentGffData = await response.json();
     if (!currentGffData?.transcripts?.length) throw new Error(`No transcripts found for '${geneName}'`);
-    renderTranscripts(currentGffData, document.getElementById('transcript-plot-svg'));
-    document.getElementById('transcript-plot-container').style.display = 'block';
+    
+    // Ensure container is visible before rendering
+    const container = document.getElementById('transcript-plot-container');
+    container.style.display = 'block';
+    
+    // Small delay to ensure DOM is ready
+    requestAnimationFrame(() => {
+        renderTranscripts(currentGffData, document.getElementById('transcript-plot-svg'));
+    });
 }
 
 function selectTranscriptById(transcriptId) {
@@ -394,7 +401,7 @@ function displayASOTable(asoSequences) {
     const container = document.getElementById('results-container');
     container.innerHTML = '';
     const table = document.createElement('table');
-    table.innerHTML = `<tr><th>Genomic Coordinate</th><th>Region</th><th>Target Sequence</th><th>ASO Sequence</th><th>GC Content (%)</th><th>OligoAI Score</th></tr>`;
+    table.innerHTML = `<tr><th>Genomic Coordinate</th><th>Region</th><th>ASO Sequence</th><th>GC Content (%)</th><th>OligoAI Score</th></tr>`;
 
     const sugarPattern = document.getElementById('chemistry-input').value;
     const isModified = (index) => {
@@ -408,7 +415,6 @@ function displayASOTable(asoSequences) {
         row.innerHTML = `
             <td>${aso.genomic_coordinate}</td>
             <td>${aso.region}</td>
-            <td style="font-family: monospace;">${aso.target_sequence}</td>
             <td style="font-family: monospace;">${styledAso}</td>
             <td>${aso.gc_content.toFixed(1)}</td>
             <td>${aso.oligoai_score.toFixed(4)}</td>
@@ -471,7 +477,18 @@ function renderTranscripts(gffData, svgElement) {
     const totalRange = maxCoord - minCoord;
     if (totalRange <= 0) return;
     const p = { t: 20, r: 20, b: 50, l: 100 };
-    const svgWidth = svgElement.clientWidth || 800;
+    
+    // Fix: Ensure container is visible and get proper width
+    const container = document.getElementById('transcript-plot-container');
+    let svgWidth = svgElement.clientWidth || container.clientWidth || 800;
+    
+    // If still getting 0, force a reflow and try again
+    if (svgWidth === 0) {
+        container.style.display = 'block';
+        svgElement.style.width = '100%';
+        svgWidth = svgElement.getBoundingClientRect().width || 1100 - 50; // fallback to container max-width minus padding
+    }
+    
     const plotWidth = svgWidth - p.l - p.r;
     const trackH = 20, featH = 10, cdsH = 14, trackS = 15;
     const svgHeight = p.t + p.b + (transcripts.length * (trackH + trackS));

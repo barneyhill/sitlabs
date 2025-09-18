@@ -49,7 +49,6 @@ interface EnrichedAso {
   aso_sequence: string;
   oligoai_score: number;
   genomic_coordinate: string;
-  target_sequence: string;
   gc_content: number;
   region: string;
 }
@@ -79,7 +78,7 @@ function sanitizeGeneName(geneName: string): string {
 
   // Use path.basename to remove any path traversal attempts
   let sanitized = basename(geneName.trim());
-  
+
   return sanitized
     .toUpperCase()
     .replace(/[^A-Z0-9\-_.]/g, '_')
@@ -172,12 +171,21 @@ Bun.serve({
       const jobId = segments[2];
       if (jobId && jobId !== 'index.html') {
         // Serve index.html for client-side routing
-        const indexFile = Bun.file(path.join(projectRoot, 'oligoai', 'index.html'));
+        const indexFile = Bun.file(path.join('public', 'oligoai', 'index.html')); // Changed this line
         if (await indexFile.exists()) {
           return new Response(indexFile, {
             headers: { 'Content-Type': 'text/html' }
           });
         }
+      }
+    }
+    // Handle genorxiv routing
+    if (pathname === '/genorxiv/' || pathname === '/genorxiv') {
+      const indexFile = Bun.file(path.join('public', 'genorxiv', 'index.html'));
+      if (await indexFile.exists()) {
+        return new Response(indexFile, {
+          headers: { 'Content-Type': 'text/html' }
+        });
       }
     }
 
@@ -263,9 +271,9 @@ Bun.serve({
             const metadata: JobMetadata = await Bun.file(metaPath).json();
 
             const csv = [
-              'genomic_coordinate,region,target_sequence,aso_sequence,gc_content,oligoai_score',
+              'genomic_coordinate,region,aso_sequence,gc_content,oligoai_score',
               ...results.map(r =>
-                `${r.genomic_coordinate},${r.region},"${r.target_sequence}","${r.aso_sequence}",${r.gc_content.toFixed(1)},${r.oligoai_score.toFixed(4)}`
+                `${r.genomic_coordinate},${r.region},"${r.aso_sequence}",${r.gc_content.toFixed(1)},${r.oligoai_score.toFixed(4)}`
               )
             ].join('\n');
 
@@ -363,12 +371,16 @@ Bun.serve({
     }
 
     // Static file serving
-    let filePath = path.join(projectRoot, pathname);
+    const publicDir = path.join(projectRoot, 'public');
+    let filePath = path.join(publicDir, pathname);
     if (pathname.endsWith('/')) filePath = path.join(filePath, 'index.html');
+
     const file = Bun.file(filePath);
     if (await file.exists()) return new Response(file);
+
     const fileWithIndex = Bun.file(path.join(filePath, 'index.html'));
     if (await fileWithIndex.exists()) return new Response(fileWithIndex);
+
     return new Response("404: Not Found", { status: 404 });
   },
   error(error) {
@@ -427,7 +439,7 @@ async function submitRunpodJob(data: z.infer<typeof ScoreAsosBodySchema>) {
     // Submit job
     const result = await endpoint.run({
         input: {
-            target_rna: targetRna,
+            target_rna: targetRna,  // This is in DNA format (with T's)
             aso_length: asoLength,
             sugar_mods: sugarMods,
             backbone_mods: backboneMods,
@@ -537,7 +549,7 @@ function reverseComplement(rna: string): string {
 function reconstructAndEnrichAsos(
     positions: number[],
     scores: number[],
-    targetRna: string,
+    targetRna: string,  // This is pre-mRNA in DNA format (with T's)
     gene: GffFeature,
     transcript: GffFeature,
     asoLength: number
@@ -545,16 +557,19 @@ function reconstructAndEnrichAsos(
     const calculateGC = (seq: string) => (seq.match(/[GC]/g) || []).length / seq.length * 100;
 
     return positions.map((pos, i) => {
-        const targetSequence = targetRna.substring(pos, pos + asoLength).replace(/T/g, 'U');
-        const asoSequence = reverseComplement(targetSequence);
-        const genomicPosition = gene.start + pos;
+        // Extract target sequence in DNA format
+        const targetDnaSequence = targetRna.substring(pos, pos + asoLength);
+        
+        // ASO stays as DNA (reverse complement of target DNA)
+        const asoSequence = reverseComplement(targetDnaSequence);
+        
+        const genomicPosition = transcript.start + pos;
 
         return {
             position: pos,
-            aso_sequence: asoSequence,
+            aso_sequence: asoSequence,          // DNA format (with T's)
             oligoai_score: scores[i],
             genomic_coordinate: `${gene.seqid}:${genomicPosition}`,
-            target_sequence: targetSequence,
             gc_content: calculateGC(asoSequence),
             region: getAsoRegion(genomicPosition, asoLength, transcript)
         };
@@ -562,7 +577,7 @@ function reconstructAndEnrichAsos(
 }
 
 async function getGffData(geneName: string): Promise<any> {
-  const gffPath = path.join(projectRoot, 'oligoai', 'gene_sequences', `${geneName}.gff3.gz`);
+  const gffPath = path.join(projectRoot, 'public', 'oligoai', 'gene_sequences', `${geneName}.gff3.gz`);
   const gffFile = Bun.file(gffPath);
   if (!(await gffFile.exists())) throw new Error(`GFF file not found for gene: ${geneName}`);
   const fileBuffer = await gffFile.arrayBuffer();
@@ -573,7 +588,7 @@ async function getGffData(geneName: string): Promise<any> {
 async function getTranscriptSequence(geneName: string, transcriptId: string) {
     const sanitizedGeneName: string = sanitizeGeneName(geneName);
     const gffData = await getGffData(sanitizedGeneName);
-    const fastaPath = path.join(projectRoot, 'oligoai', 'gene_sequences', `${sanitizedGeneName}.fa.gz`);
+    const fastaPath = path.join(projectRoot, 'public', 'oligoai', 'gene_sequences', `${sanitizedGeneName}.fa.gz`);
     const fastaFile = Bun.file(fastaPath);
     if (!(await fastaFile.exists())) throw new Error(`FASTA file not found for gene: ${geneName}`);
     const fileBuffer = await fastaFile.arrayBuffer();
@@ -586,21 +601,22 @@ async function getTranscriptSequence(geneName: string, transcriptId: string) {
     if (!gene || !transcript) throw new Error(`Transcript ID ${transcriptId} not found for gene ${geneName}`);
     const startIndex = transcript.start - gene.start;
     const endIndex = transcript.end - gene.start + 1;
-    
+
     // Extract the transcript DNA sequence
     let transcriptDna = fullSequence.substring(startIndex, endIndex);
-    
-    // Convert DNA to pre-mRNA considering strand
-    let preMrna: string;
+
+    // Get pre-mRNA in DNA format (with T's, not U's)
+    let preMrnaDna: string;
     if (gene.strand === '-') {
         // For minus strand genes, reverse complement the DNA sequence
-        preMrna = reverseComplement(transcriptDna);
+        preMrnaDna = reverseComplement(transcriptDna);
     } else {
-        // For plus strand genes, just convert T to U
-        preMrna = transcriptDna;
+        // For plus strand genes, keep as DNA (with T's)
+        preMrnaDna = transcriptDna;
     }
-    
-    return { targetRna: preMrna, gene, transcript };
+
+    // Return DNA format (with T's) - will be converted to RNA later for display only
+    return { targetRna: preMrnaDna, gene, transcript };
 }
 
 function formatChemistryForApi(sugarString: string, backboneString: string) {
