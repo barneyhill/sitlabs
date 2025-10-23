@@ -55,7 +55,7 @@ class GenomeBrowser {
     async loadFindings() {
         try {            
             // Construct the filename based on current chromosome
-            const filename = `rxiv_findings/rxiv_findings_${this.state.data.currentChromosome}.jsonl`;
+            const filename = `/genorxiv/rxiv_findings/rxiv_findings_${this.state.data.currentChromosome}.jsonl`;
             const response = await fetch(filename);
             
             if (!response.ok) {

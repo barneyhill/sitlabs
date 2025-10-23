@@ -9,6 +9,7 @@ let currentPage = 1;
 let totalPages = 1;
 let currentResults = [];
 let emailModalShown = false;
+let customFastaData = null; // Store custom FASTA data
 
 document.addEventListener('DOMContentLoaded', async () => {
     setupEventListeners();
@@ -32,6 +33,12 @@ function setupEventListeners() {
     document.getElementById('close-popup').addEventListener('click', () => togglePopup(false));
     document.getElementById('popup-overlay').addEventListener('click', () => togglePopup(false));
 
+    // FASTA upload event listeners
+    document.getElementById('fasta-upload-btn').addEventListener('click', () => {
+        document.getElementById('fasta-file-input').click();
+    });
+    document.getElementById('fasta-file-input').addEventListener('change', handleFastaUpload);
+
     // Email modal event listeners
     document.getElementById('email-modal-overlay').addEventListener('click', () => closeEmailModal());
     document.getElementById('close-email-modal').addEventListener('click', () => closeEmailModal());
@@ -48,6 +55,163 @@ function setupEventListeners() {
     // Action buttons
     document.getElementById('download-csv').addEventListener('click', downloadAllCsv);
     document.getElementById('copy-link').addEventListener('click', copyShareableLink);
+}
+
+async function handleFastaUpload(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const fastaBtn = document.getElementById('fasta-upload-btn');
+    fastaBtn.classList.add('loading');
+    fastaBtn.innerHTML = 'Loading... <i class="fa-solid fa-spinner fa-spin"></i>';
+
+    try {
+        const content = await file.text();
+        const fastaData = parseFastaFile(content, file.name);
+        
+        if (!fastaData) {
+            throw new Error('Invalid FASTA file format');
+        }
+
+        // Get ASO length from chemistry input
+        const chemistryInput = document.getElementById('chemistry-input').value.trim();
+        let asoLength = 20; // default
+        if (chemistryInput) {
+            const parts = chemistryInput.split(',');
+            asoLength = parts.reduce((sum, part) => {
+                const match = part.trim().match(/^(\d+)x/);
+                return sum + (match ? parseInt(match[1]) : 1);
+            }, 0);
+        }
+
+        // Check minimum length requirement (sequence must have at least 100 valid positions for ASOs)
+        if (fastaData.length - asoLength < 100) {
+            throw new Error(`FASTA sequence must be at least ${asoLength + 100} nucleotides long (ASO length: ${asoLength}, minimum targetable positions: 100)`);
+        }
+
+        // Store the custom FASTA data
+        customFastaData = fastaData;
+
+        document.getElementById('gene-search').value = fastaData.geneName; // REMOVED
+
+        // Create mock GFF data for visualization
+        const mockGffData = createMockGffFromFasta(fastaData);
+        currentGffData = mockGffData;
+
+        // Reset UI and display the custom sequence
+        resetUIState();
+        const container = document.getElementById('transcript-plot-container');
+        container.style.display = 'block';
+
+        // Render the custom transcript
+        requestAnimationFrame(() => {
+            renderTranscripts(mockGffData, document.getElementById('transcript-plot-svg'));
+        });
+
+        // Update button to show file loaded
+        fastaBtn.classList.remove('loading');
+        fastaBtn.innerHTML = `<i class="fa-solid fa-check"></i> ${fastaData.geneName}`;
+        
+        // Reset after 3 seconds
+        setTimeout(() => {
+            fastaBtn.innerHTML = 'FASTA <i class="fa-solid fa-file-arrow-up"></i>';
+        }, 3000);
+
+    } catch (error) {
+        showError(`Failed to load FASTA file: ${error.message}`, 'transcript');
+        fastaBtn.classList.remove('loading');
+        fastaBtn.innerHTML = 'FASTA <i class="fa-solid fa-file-arrow-up"></i>';
+    }
+
+    // Reset file input
+    event.target.value = '';
+}
+
+function parseFastaFile(content, filename) {
+    const lines = content.trim().split('\n');
+
+    // Check if first line is a header
+    if (!lines[0].startsWith('>')) {
+        return null;
+    }
+
+    // Extract sequence name from header or use filename
+    let sequenceName = lines[0].substring(1).trim();
+    if (!sequenceName) {
+        sequenceName = filename.replace(/\.(fa|fasta)$/i, '');
+    }
+
+    // Clean up the name - take first word/identifier if complex header
+    sequenceName = sequenceName.split(/[\s\|]/)[0];
+
+    // Extract sequence (joining all non-header lines)
+    const sequence = lines
+        .slice(1)
+        .filter(line => !line.startsWith('>'))
+        .join('')
+        .replace(/\s/g, '')
+        .toUpperCase();
+
+    // Accept both DNA (ATCGN) and RNA (AUCGN)
+    if (!sequence || !/^[ATUCGN]+$/i.test(sequence)) {
+        return null;
+    }
+
+    return {
+        geneName: sequenceName,
+        sequence: sequence,  // Keep original format (RNA or DNA)
+        length: sequence.length,
+        isCustom: true
+    };
+}
+
+function createMockGffFromFasta(fastaData) {
+    // Create a mock GFF structure that treats the entire sequence as one transcript
+    const mockTranscript = {
+        id: `${fastaData.geneName}_custom`,
+        name: fastaData.geneName,
+        type: 'transcript',
+        start: 1,
+        end: fastaData.length,
+        strand: '+',
+        seqid: 'custom',
+        attributes: {
+            ID: `${fastaData.geneName}_custom`,
+            Name: fastaData.geneName,
+            tag: 'custom_sequence'
+        },
+        isCanonical: true,
+        exons: [{
+            id: `${fastaData.geneName}_exon1`,
+            type: 'exon',
+            start: 1,
+            end: fastaData.length,
+            strand: '+',
+            attributes: {}
+        }],
+        cds: [], // No CDS for custom sequences
+        utrs: [] // No UTRs for custom sequences
+    };
+
+    return {
+        gene: {
+            id: fastaData.geneName,
+            name: fastaData.geneName,
+            type: 'gene',
+            start: 1,
+            end: fastaData.length,
+            strand: '+',
+            seqid: 'custom',
+            attributes: {
+                ID: fastaData.geneName,
+                Name: fastaData.geneName
+            }
+        },
+        transcripts: [mockTranscript],
+        minCoord: 1,
+        maxCoord: fastaData.length,
+        customFastaData: fastaData // Store reference to original FASTA data
+    };
 }
 
 function getJobIdFromUrl() {
@@ -83,9 +247,10 @@ async function loadFromJobId(jobId) {
         document.getElementById('transfection-method-input').value = metadata.chemistry.transfectionMethod;
         document.getElementById('dosage-input').value = metadata.chemistry.dosage;
 
-
-        // Load gene visualization
-        await loadGeneVisualization(metadata.gene);
+        // Load gene visualization (unless it's a custom sequence)
+        if (!metadata.isCustom) {
+            await loadGeneVisualization(metadata.gene);
+        }
 
         // Select the transcript
         selectTranscriptById(metadata.transcriptId);
@@ -112,11 +277,11 @@ async function loadGeneVisualization(geneName) {
     if (!response.ok) throw new Error(`Gene '${geneName}' not found`);
     currentGffData = await response.json();
     if (!currentGffData?.transcripts?.length) throw new Error(`No transcripts found for '${geneName}'`);
-    
+
     // Ensure container is visible before rendering
     const container = document.getElementById('transcript-plot-container');
     container.style.display = 'block';
-    
+
     // Small delay to ensure DOM is ready
     requestAnimationFrame(() => {
         renderTranscripts(currentGffData, document.getElementById('transcript-plot-svg'));
@@ -135,6 +300,9 @@ function selectTranscriptById(transcriptId) {
 async function handleGeneSearch() {
     const geneName = document.getElementById('gene-search').value.trim();
     if (!geneName) return showError('Please enter a gene name.');
+
+    // Clear any custom FASTA data when doing a gene search
+    customFastaData = null;
 
     resetUIState();
     setLoadingState(true, 'transcript', `Loading gene data for ${geneName}...`);
@@ -178,14 +346,36 @@ async function handleTranscriptClick(transcript) {
         return;
     }
 
-    const requestBody = {
-        geneName,
-        transcriptId: selectedTranscript.id,
-        sugar,
-        backbone,
-        transfectionMethod,
-        dosage
-    };
+    // Check if this is a custom FASTA sequence
+    let requestBody;
+    if (currentGffData?.customFastaData) {
+        // For custom FASTA, send the sequence directly
+        requestBody = {
+            geneName,
+            transcriptId: selectedTranscript.id,
+            sugar,
+            backbone,
+            transfectionMethod,
+            dosage,
+            customSequence: currentGffData.customFastaData.sequence,
+            isCustom: true
+        };
+
+        emailModalShown = true;
+        showEmailModal();
+        return;
+
+    } else {
+        // Standard gene/transcript request
+        requestBody = {
+            geneName,
+            transcriptId: selectedTranscript.id,
+            sugar,
+            backbone,
+            transfectionMethod,
+            dosage
+        };
+    }
 
     try {
         const checkResponse = await fetch('/api/check-cache', {
@@ -221,7 +411,7 @@ async function submitJob(userEmail = null) {
         const transfectionMethod = document.getElementById('transfection-method-input').value.trim();
         const dosage = parseInt(document.getElementById('dosage-input').value.trim(), 10);
 
-        const requestBody = {
+        let requestBody = {
             geneName,
             transcriptId: selectedTranscript.id,
             sugar,
@@ -229,6 +419,12 @@ async function submitJob(userEmail = null) {
             transfectionMethod,
             dosage
         };
+
+        // Add custom sequence if present
+        if (currentGffData?.customFastaData) {
+            requestBody.customSequence = currentGffData.customFastaData.sequence;
+            requestBody.isCustom = true;
+        }
 
         if (userEmail) {
             requestBody.userEmail = userEmail;
@@ -366,10 +562,17 @@ async function loadResultsPage(jobId, page) {
         totalPages = pagination.pages;
 
         // Update subtitle
-        const metaResponse = await fetch(`/api/results/${jobId}/meta`);
-        const metadata = await metaResponse.json();
-        document.getElementById('aso-table-subtitle').textContent =
-            `${metadata.gene} - ${metadata.transcriptName} (${pagination.total.toLocaleString()} total ASOs)`;
+	const metaResponse = await fetch(`/api/results/${jobId}/meta`);
+	const metadata = await metaResponse.json();
+
+	// For custom sequences or when gene/transcript names match, avoid redundancy
+	let subtitleText;
+	if (metadata.isCustom || metadata.gene === metadata.transcriptName) {
+	    subtitleText = `${metadata.gene} (${pagination.total.toLocaleString()} total ASOs)`;
+	} else {
+	    subtitleText = `${metadata.gene} - ${metadata.transcriptName} (${pagination.total.toLocaleString()} total ASOs)`;
+	}
+	document.getElementById('aso-table-subtitle').textContent = subtitleText;
 
         // Display results
         displayASOTable(data);
@@ -468,7 +671,6 @@ function copyShareableLink() {
     }
 }
 
-
 function renderTranscripts(gffData, svgElement) {
     svgElement.innerHTML = '';
     document.getElementById('transcript-plot-title').textContent = `Select a ${gffData.gene?.name || 'Gene'} transcript...`;
@@ -476,24 +678,23 @@ function renderTranscripts(gffData, svgElement) {
     const { minCoord, maxCoord } = gffData;
     const totalRange = maxCoord - minCoord;
     if (totalRange <= 0) return;
-    const p = { t: 20, r: 20, b: 50, l: 100 };
-    
+    const p = { t: 20, r: 60, b: 50, l: 100 }; // Increased right padding from 20 to 60
+
     // Fix: Ensure container is visible and get proper width
     const container = document.getElementById('transcript-plot-container');
     let svgWidth = svgElement.clientWidth || container.clientWidth || 800;
-    
+
     if (svgWidth === 0) {
         container.style.display = 'block';
         svgElement.style.width = '100%';
         svgWidth = svgElement.getBoundingClientRect().width || 1100 - 50;
     }
-    
+
     const plotWidth = svgWidth - p.l - p.r;
     const trackH = 20, featH = 10, cdsH = 14, trackS = 15;
     const svgHeight = p.t + p.b + (transcripts.length * (trackH + trackS));
     svgElement.setAttribute('height', svgHeight);
     const scaleX = (coord) => p.l + ((coord - minCoord) / totalRange) * plotWidth;
-    currentGffData.plotParams = { minCoord, maxCoord, scaleX, svgHeight };
 
     transcripts.forEach((transcript, index) => {
         const g = document.createElementNS(svgNS, 'g');
@@ -502,7 +703,7 @@ function renderTranscripts(gffData, svgElement) {
         const yCenter = p.t + index * (trackH + trackS) + (trackH / 2);
         const firstExon = transcript.exons[0];
         const lastExon = transcript.exons[transcript.exons.length - 1];
-        
+
         // Add invisible background rectangle for full-row clicking
         const backgroundRect = document.createElementNS(svgNS, 'rect');
         backgroundRect.setAttribute('x', '0');
@@ -512,7 +713,7 @@ function renderTranscripts(gffData, svgElement) {
         backgroundRect.setAttribute('fill', 'transparent');
         backgroundRect.classList.add('transcript-row-bg');
         g.appendChild(backgroundRect);
-        
+
         // Add the visible elements
         const elements = `
             <text x="${p.l - 10}" y="${yCenter + 4}" font-size="10px" text-anchor="end" ${transcript.isCanonical ? 'font-weight="bold"' : ''}>${transcript.name || transcript.id.split(':').pop()}</text>
@@ -521,7 +722,7 @@ function renderTranscripts(gffData, svgElement) {
             ${(transcript.cds || []).map(cds => `<rect x="${scaleX(cds.start)}" y="${yCenter - cdsH/2}" width="${Math.max(1, scaleX(cds.end) - scaleX(cds.start))}" height="${cdsH}" fill="#007bff"></rect>`).join('')}
         `;
         g.insertAdjacentHTML('beforeend', elements);
-        
+
         g.addEventListener('click', () => {
             document.querySelectorAll('.transcript-row.selected').forEach(el => el.classList.remove('selected'));
             g.classList.add('selected');
@@ -531,22 +732,98 @@ function renderTranscripts(gffData, svgElement) {
         g.addEventListener('mouseout', () => g.classList.remove('hover-highlight'));
         svgElement.appendChild(g);
     });
+
+    // --- Draw Axis/Ruler ---
+    const axisY = svgHeight - 25; // Position near bottom
+    const axisLine = document.createElementNS(svgNS, 'line');
+    axisLine.setAttribute('x1', scaleX(minCoord));
+    axisLine.setAttribute('y1', axisY);
+    axisLine.setAttribute('x2', scaleX(maxCoord));
+    axisLine.setAttribute('y2', axisY);
+    axisLine.setAttribute('stroke', '#ccc');
+    axisLine.setAttribute('stroke-width', '1');
+    svgElement.appendChild(axisLine);
+
+    // Add tick marks and labels
+    const numTicks = 5; // Adjust as needed
+    for (let i = 0; i <= numTicks; i++) {
+        const coord = minCoord + (i * (maxCoord - minCoord) / numTicks);
+        const x = scaleX(coord);
+
+        // Tick mark
+        const tick = document.createElementNS(svgNS, 'line');
+        tick.setAttribute('x1', x);
+        tick.setAttribute('y1', axisY - 3);
+        tick.setAttribute('x2', x);
+        tick.setAttribute('y2', axisY + 3);
+        tick.setAttribute('stroke', '#ccc');
+        svgElement.appendChild(tick);
+
+        // Label
+        const label = document.createElementNS(svgNS, 'text');
+        label.setAttribute('x', x);
+        label.setAttribute('y', axisY + 15);
+        label.setAttribute('font-size', '10px');
+        label.setAttribute('text-anchor', 'middle');
+        label.setAttribute('fill', '#666');
+        label.textContent = Math.round(coord).toLocaleString();
+        svgElement.appendChild(label);
+    }
+
+    // Add chromosome label - moved to be inline with ruler
+    if (gffData.gene?.seqid) {
+        const chrLabel = document.createElementNS(svgNS, 'text');
+        chrLabel.setAttribute('x', scaleX(minCoord) - 25);
+        chrLabel.setAttribute('y', axisY); // Same Y as the ruler line
+        chrLabel.setAttribute('font-size', '11px');
+        chrLabel.setAttribute('text-anchor', 'end');
+        chrLabel.setAttribute('fill', '#666');
+        chrLabel.setAttribute('font-weight', 'bold');
+        chrLabel.setAttribute('alignment-baseline', 'middle'); // Vertically center with line
+        let chrText = String(gffData.gene.seqid);
+        if (!chrText.toLowerCase().startsWith('chr')) {
+            chrText = 'chr' + chrText;
+        }
+        chrLabel.textContent = chrText;
+        svgElement.appendChild(chrLabel);
+    }
+
+    // Store plot parameters including axisY
+    currentGffData.plotParams = { minCoord, maxCoord, scaleX, svgHeight, axisY };
 }
 
 function showMarkerOnPlot(position) {
     hideMarkerOnPlot();
     const svg = document.getElementById('transcript-plot-svg');
     if (!currentGffData?.plotParams) return;
-    const { minCoord, maxCoord, scaleX, svgHeight } = currentGffData.plotParams;
+
+    const { minCoord, maxCoord, scaleX, axisY } = currentGffData.plotParams;
     if (position < minCoord || position > maxCoord) return;
+
     const x = scaleX(position);
-    const marker = document.createElementNS(svgNS, 'line');
-    marker.id = 'aso-hover-marker';
-    marker.setAttribute('x1', x); marker.setAttribute('y1', 0);
-    marker.setAttribute('x2', x); marker.setAttribute('y2', svgHeight);
-    marker.setAttribute('stroke', '#E8796A'); marker.setAttribute('stroke-width', '1.5');
-    marker.setAttribute('stroke-dasharray', '4 4');
-    svg.appendChild(marker);
+    const y = axisY; // Now this will be exactly on the ruler line
+    const lineLength = 8;
+
+    // Create asterisk group
+    const asteriskGroup = document.createElementNS(svgNS, 'g');
+    asteriskGroup.setAttribute('id', 'aso-hover-marker');
+    asteriskGroup.setAttribute('pointer-events', 'none');
+
+    // Create the 3 lines for the asterisk
+    const angles = [Math.PI / 2, Math.PI / 6, 5 * Math.PI / 6];
+
+    angles.forEach(angle => {
+        const line = document.createElementNS(svgNS, 'line');
+        line.setAttribute('x1', x - lineLength * Math.cos(angle));
+        line.setAttribute('y1', y - lineLength * Math.sin(angle));
+        line.setAttribute('x2', x + lineLength * Math.cos(angle));
+        line.setAttribute('y2', y + lineLength * Math.sin(angle));
+        line.setAttribute('stroke', '#E8796A');
+        line.setAttribute('stroke-width', '2');
+        asteriskGroup.appendChild(line);
+    });
+
+    svg.appendChild(asteriskGroup);
 }
 
 function hideMarkerOnPlot() { document.getElementById('aso-hover-marker')?.remove(); }

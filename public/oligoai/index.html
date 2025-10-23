@@ -22,6 +22,12 @@
                 <div id="top-search-row">
                     <input type="text" id="gene-search" placeholder="Enter gene name... (e.g. 'FGFR3')" value="FGFR3">
                     <button id="search-button">Search</button>
+                    <div class="fasta-upload-wrapper">
+                        <input type="file" id="fasta-file-input" accept=".fa,.fasta" style="display: none;">
+                        <button id="fasta-upload-btn" class="fasta-btn" title="Upload FASTA file">
+                            FASTA <i class="fa-solid fa-file-arrow-up"></i>
+                        </button>
+                    </div>
                 </div>
                 <div id="chemistry-options-wrapper">
                     <div id="sugar-input-group">
@@ -93,12 +99,15 @@
     <div id="popup-overlay" class="hidden"></div>
     <div id="about-popup" class="hidden">
         <button id="close-popup">&times;</button>
-        <h2>About OligoAI</h2>
-        <p>This tool predicts the efficacy of RNAse-H1 mediated antisense oligonucleotides (ASOs) based on their sequence, rna context, dosage and chemical modifications.</p>
-        <p>Enter a gene name, select a transcript, define the ASO chemistry, and view predicted scores from our backend model.</p>
-        <p><em>Model details and citation will go here.</em></p>
+        <h2>About oligo-1</h2>
+        <p>This tool predicts the efficacy of RNase H1-mediated antisense oligonucleotides (ASOs) based on their sequence and chemical modifications using the OligoAI deep learning model.</p>
+        <p>OligoAI was trained on the ASO Atlas dataset comprising 188,521 gapmer ASOs targeting 334 genes, extracted from published patents. The model achieved a 5.72-fold reduction in experimental screening effort compared to random selection.</p>
+        <p>Enter a gene name, select a transcript, define the ASO chemistry (sugar/backbone), and view predicted efficacy scores ranked by the model.</p>
+        <p><strong>Publication:</strong> Hill et al. (2025). "Accurately modelling RNase H-mediated antisense oligonucleotide efficacy"</p>
+        <p><strong>Resources:</strong><br>
+        • GitHub: <a href="https://github.com/barneyhill/aso_atlas" target="_blank" style="color: #E8796A;">github.com/barneyhill/aso_atlas</a><br>
+        • Model: <a href="https://huggingface.co/barneyhill/OligoAI" target="_blank" style="color: #E8796A;">huggingface.co/barneyhill/OligoAI</a></p>
     </div>
-
     <!-- Email Notification Modal -->
     <div id="email-modal-overlay" class="hidden"></div>
     <div id="email-modal" class="hidden">
@@ -112,7 +121,7 @@
                 Your results for <strong id="email-modal-gene"></strong> may take a few minutes.
                 Enter your email to receive a notification when it's complete.
             </p>
-            
+
             <div class="email-input-group">
                 <input type="email" id="user-email-input" placeholder="your.email@example.com">
                 <div class="email-hint">We'll only use this to notify you about this specific job.</div>

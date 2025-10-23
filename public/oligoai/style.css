@@ -22,6 +22,39 @@ header h1 { font-family: "Libre Baskerville", serif; font-size: 2.5em; font-weig
     align-items: flex-end;
 }
 
+.fasta-upload-wrapper {
+    display: flex;
+    align-items: center;
+    margin-left: auto; /* Push to right */
+}
+
+.fasta-btn {
+    padding: 10px 15px;
+    background-color: #6c757d;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    transition: background-color 0.2s ease;
+    height: 40px;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    white-space: nowrap;
+}
+
+.fasta-btn:hover {
+    background-color: #5a6268;
+}
+
+.fasta-btn.loading {
+    background-color: #999;
+    cursor: wait;
+}
+
 #chemistry-options-wrapper {
     display: flex; /* This is the second row */
     gap: 15px;
@@ -120,7 +153,7 @@ input::placeholder {
     margin-bottom: 15px;
     padding: 0 10px;
     position: relative;
-    height: 32px;
+    min-height: 32px;
 }
 
 #aso-table-subtitle {

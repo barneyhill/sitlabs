@@ -17,6 +17,8 @@ const ScoreAsosBodySchema = z.object({
   transfectionMethod: z.string().min(1),
   dosage: z.number().positive(),
   userEmail: z.string().email().optional(),
+  customSequence: z.string().optional(),
+  isCustom: z.boolean().optional(),
 });
 
 // --- Type Definitions ---
@@ -42,6 +44,7 @@ interface JobMetadata {
   totalResults: number;
   createdAt: string;
   status: 'pending' | 'completed' | 'failed';
+  isCustom?: boolean;
 }
 
 interface EnrichedAso {
@@ -171,7 +174,7 @@ Bun.serve({
       const jobId = segments[2];
       if (jobId && jobId !== 'index.html') {
         // Serve index.html for client-side routing
-        const indexFile = Bun.file(path.join('public', 'oligoai', 'index.html')); // Changed this line
+        const indexFile = Bun.file(path.join('public', 'oligoai', 'index.html'));
         if (await indexFile.exists()) {
           return new Response(indexFile, {
             headers: { 'Content-Type': 'text/html' }
@@ -395,6 +398,12 @@ console.log(`Server listening on http://localhost:8080`);
 
 async function findCompletedJob(data: z.infer<typeof ScoreAsosBodySchema>): Promise<string | null> {
     console.log("Checking for cached results...");
+    
+    // Don't cache custom sequences for now
+    if (data.isCustom) {
+        return null;
+    }
+    
     const glob = new Bun.Glob('*.meta.json');
 
     for await (const file of glob.scan(RESULTS_DIR)) {
@@ -430,8 +439,55 @@ async function submitRunpodJob(data: z.infer<typeof ScoreAsosBodySchema>) {
     }
     // --- END CACHE CHECK ---
 
-    const { geneName, transcriptId, sugar, backbone, transfectionMethod, dosage, userEmail } = data;
-    const { targetRna, gene, transcript } = await getTranscriptSequence(geneName, transcriptId);
+    const { geneName, transcriptId, sugar, backbone, transfectionMethod, dosage, userEmail, customSequence, isCustom } = data;
+    
+    let targetRna: string;
+    let gene: GffFeature;
+    let transcript: GffFeature;
+
+    if (isCustom && customSequence) {
+        targetRna = customSequence.toUpperCase().replace(/U/g, 'T');
+
+        // Create mock gene and transcript objects for custom sequences
+        gene = {
+            seqid: 'custom',
+            type: 'gene',
+            start: 1,
+            end: customSequence.length,
+            strand: '+',
+            attributes: { ID: geneName, Name: geneName },
+            id: geneName,
+            name: geneName
+        };
+        
+        transcript = {
+            seqid: 'custom',
+            type: 'transcript',
+            start: 1,
+            end: customSequence.length,
+            strand: '+',
+            attributes: { ID: transcriptId, Name: geneName },
+            id: transcriptId,
+            name: geneName,
+            exons: [{
+                seqid: 'custom',
+                type: 'exon',
+                start: 1,
+                end: customSequence.length,
+                strand: '+',
+                attributes: {}
+            }],
+            cds: [],
+            utrs: []
+        };
+    } else {
+        // Handle standard gene/transcript lookup
+        const result = await getTranscriptSequence(geneName, transcriptId);
+        targetRna = result.targetRna;
+        gene = result.gene;
+        transcript = result.transcript;
+    }
+
     const { sugarMods, backboneMods, asoLength } = formatChemistryForApi(sugar, backbone);
 
     console.log(`Submitting job for ${geneName} (${transcriptId})...`);
@@ -462,7 +518,8 @@ async function submitRunpodJob(data: z.infer<typeof ScoreAsosBodySchema>) {
         userEmail,
         totalResults: 0,
         createdAt: new Date().toISOString(),
-        status: 'pending'
+        status: 'pending',
+        isCustom: isCustom || false
     };
 
     await Bun.write(
@@ -478,65 +535,100 @@ async function submitRunpodJob(data: z.infer<typeof ScoreAsosBodySchema>) {
 
 async function processJobInBackground(jobId: string, targetRna: string, gene: GffFeature, transcript: GffFeature, asoLength: number) {
     try {
-        console.log(`Background processing started for job ${jobId}`);
+        console.log(`[${jobId}] Background processing started`);
         const metaPath = path.join(RESULTS_DIR, `${jobId}.meta.json`);
 
-        // Poll for completion
         let attempts = 0;
         const maxAttempts = 720; // 60 minutes
 
         while (attempts < maxAttempts) {
-            const status = await endpoint.status(jobId, 100000);
+            attempts++;
+            
+            try {
+                console.log(`[${jobId}] Checking status (attempt ${attempts}/${maxAttempts})...`);
+                const status = await endpoint.status(jobId, 100000);
+                
+                console.log(`[${jobId}] RunPod status: ${status.status}`);
 
-            if (status.status === 'COMPLETED') {
-                console.log(`Job ${jobId} completed on RunPod, processing results locally...`);
+                if (status.status === 'COMPLETED') {
+                    console.log(`[${jobId}] Job completed! Processing results...`);
 
-                const output = status.output;
-                const positions: number[] = output.positions || [];
-                const scores: number[] = output.scores || [];
+                    const output = status.output;
+                    if (!output) {
+                        throw new Error('No output received from RunPod');
+                    }
 
-                if (positions.length === 0 || scores.length === 0) {
-                    throw new Error('No valid results returned from RunPod');
+                    const positions: number[] = output.positions || [];
+                    const scores: number[] = output.scores || [];
+
+                    console.log(`[${jobId}] Received ${positions.length} positions and ${scores.length} scores`);
+
+                    if (positions.length === 0 || scores.length === 0) {
+                        throw new Error('No valid results returned from RunPod');
+                    }
+
+                    console.log(`[${jobId}] Enriching results...`);
+                    const enrichedResults = reconstructAndEnrichAsos(positions, scores, targetRna, gene, transcript, asoLength);
+                    enrichedResults.sort((a, b) => b.oligoai_score - a.oligoai_score);
+
+                    console.log(`[${jobId}] Compressing and saving results...`);
+                    const jsonData = JSON.stringify(enrichedResults);
+                    const compressedData = gzipSync(Buffer.from(jsonData));
+                    await Bun.write(path.join(RESULTS_DIR, `${jobId}.json.gz`), compressedData);
+
+                    console.log(`[${jobId}] Updating metadata...`);
+                    const metadata: JobMetadata = await Bun.file(metaPath).json();
+                    metadata.status = 'completed';
+                    metadata.totalResults = enrichedResults.length;
+                    await Bun.write(metaPath, JSON.stringify(metadata, null, 2));
+
+                    console.log(`[${jobId}] Results saved successfully`);
+
+                    // Send email notification
+                    if (metadata.userEmail) {
+                        console.log(`[${jobId}] Sending completion email to ${metadata.userEmail}...`);
+                        await sendCompletionEmail(metadata.userEmail, jobId, metadata);
+                        console.log(`[${jobId}] Email sent successfully`);
+                    } else {
+                        console.log(`[${jobId}] No email address provided, skipping notification`);
+                    }
+
+                    return;
+                } else if (status.status === 'FAILED') {
+                    throw new Error(status.error || 'Job failed on RunPod');
                 }
 
-                const enrichedResults = reconstructAndEnrichAsos(positions, scores, targetRna, gene, transcript, asoLength);
-                enrichedResults.sort((a, b) => b.oligoai_score - a.oligoai_score);
-
-                const jsonData = JSON.stringify(enrichedResults);
-                const compressedData = gzipSync(Buffer.from(jsonData));
-                await Bun.write(path.join(RESULTS_DIR, `${jobId}.json.gz`), compressedData);
-
-                // Update metadata
-                const metadata: JobMetadata = await Bun.file(metaPath).json();
-                metadata.status = 'completed';
-                metadata.totalResults = enrichedResults.length;
-                await Bun.write(metaPath, JSON.stringify(metadata, null, 2));
-
-                console.log(`Job ${jobId} results saved and status updated to completed.`);
-
-                // Send email notification if user provided email
-                if (metadata.userEmail) {
-                    await sendCompletionEmail(metadata.userEmail, jobId, metadata);
+                // Log other statuses
+                if (attempts % 12 === 0) { // Log every minute
+                    console.log(`[${jobId}] Still waiting... (status: ${status.status})`);
                 }
 
-                return; // Exit the function successfully
-            } else if (status.status === 'FAILED') {
-                throw new Error(status.error || 'Job failed on RunPod');
+            } catch (statusError: any) {
+                console.error(`[${jobId}] Error checking status (attempt ${attempts}):`, statusError.message);
+                // Continue polling unless we've hit max attempts
+                if (attempts >= maxAttempts) {
+                    throw statusError;
+                }
             }
 
             await new Promise(resolve => setTimeout(resolve, 5000));
-            attempts++;
         }
 
-        throw new Error('Job timed out');
+        throw new Error('Job timed out after 60 minutes');
     } catch (error: any) {
-        console.error(`Error processing job ${jobId}:`, error);
+        console.error(`[${jobId}] FATAL ERROR in background processing:`, error);
+        console.error(`[${jobId}] Stack trace:`, error.stack);
 
         const metaPath = path.join(RESULTS_DIR, `${jobId}.meta.json`);
-        if (await Bun.file(metaPath).exists()) {
-            const metadata: JobMetadata = await Bun.file(metaPath).json();
-            metadata.status = 'failed';
-            await Bun.write(metaPath, JSON.stringify(metadata, null, 2));
+        try {
+            if (await Bun.file(metaPath).exists()) {
+                const metadata: JobMetadata = await Bun.file(metaPath).json();
+                metadata.status = 'failed';
+                await Bun.write(metaPath, JSON.stringify(metadata, null, 2));
+                console.log(`[${jobId}] Metadata updated to failed status`);
+            }
+        } catch (metaError) {
+            console.error(`[${jobId}] Failed to update metadata:`, metaError);
         }
     }
 }
@@ -559,10 +651,10 @@ function reconstructAndEnrichAsos(
     return positions.map((pos, i) => {
         // Extract target sequence in DNA format
         const targetDnaSequence = targetRna.substring(pos, pos + asoLength);
-        
+
         // ASO stays as DNA (reverse complement of target DNA)
         const asoSequence = reverseComplement(targetDnaSequence);
-        
+
         const genomicPosition = transcript.start + pos;
 
         return {
