@@ -145,7 +145,7 @@ async function sendCompletionEmail(userEmail: string, jobId: string, metadata: J
         `;
 
         await resend.emails.send({
-            from: 'OligoAI <oligoai@sitlabs.org>',
+            from: 'OligoAI <noreply@sitlabs.org>',
             to: [userEmail],
             subject: `OligoAI: Your ${metadata.gene} ASO design is ready`,
             html: emailHtml,
@@ -167,6 +167,13 @@ Bun.serve({
     const url = new URL(req.url);
     const pathname = url.pathname;
     console.log(`[${req.method}] ${pathname}`);
+
+    if (pathname.toLowerCase().startsWith('/oligoai')) {
+        if (pathname.startsWith('/OligoAI')) {
+	    const newPath = '/oligoai' + pathname.slice(8);
+	    return Response.redirect(new URL(newPath + url.search, url.origin).toString(), 301);
+	}
+    }
 
     // Handle oligoai client-side routing
     if (pathname.startsWith('/oligoai/') && !pathname.includes('.')) {

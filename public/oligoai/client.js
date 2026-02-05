@@ -214,6 +214,40 @@ function createMockGffFromFasta(fastaData) {
     };
 }
 
+function validateChemistryLength(backbone, chem) {
+    if (!backbone || !chem) {
+        return { valid: false, message: "Both backbone and chemistry must be specified." };
+    }
+    
+    // Parse chemistry to count actual nucleotides
+    // Format: "5xMOE,10xDNA,5xMOE" -> sum the numbers
+    const nucleotideCount = chem
+        .split(',')
+        .map(part => {
+            const match = part.match(/^(\d+)x/);
+            return match ? parseInt(match[1], 10) : 0;
+        })
+        .reduce((sum, count) => sum + count, 0);
+    
+    if (nucleotideCount === 0) {
+        return { 
+            valid: false, 
+            message: "Could not parse chemistry string. Expected format: '5xMOE,10xDNA,5xMOE'"
+        };
+    }
+    
+    const expectedBackboneLength = nucleotideCount - 1;
+    
+    if (backbone.length !== expectedBackboneLength) {
+        return { 
+            valid: false, 
+            message: `Chemistry validation failed: chemistry specifies ${nucleotideCount} nucleotides, which requires ${expectedBackboneLength} backbone linkages. Got ${backbone.length} backbone characters.`
+        };
+    }
+    
+    return { valid: true };
+}
+
 function getJobIdFromUrl() {
     const match = window.location.pathname.match(/\/oligoai\/([^\/]+)/);
     return match ? match[1] : null;
@@ -339,6 +373,13 @@ async function handleTranscriptClick(transcript) {
     const backbone = document.getElementById('backbone-input').value.trim();
     const transfectionMethod = document.getElementById('transfection-method-input').value.trim();
     const dosage = parseInt(document.getElementById('dosage-input').value.trim(), 10);
+	
+    const chemValidation = validateChemistryLength(backbone, sugar);
+    if (!chemValidation.valid) {
+        showError(chemValidation.message, 'aso');
+        setLoadingState(false, 'aso');
+	return;
+    }
 
     if (isNaN(dosage) || dosage <= 0) {
         showError("Dosage must be a positive number.", 'aso');
@@ -411,6 +452,13 @@ async function submitJob(userEmail = null) {
         const transfectionMethod = document.getElementById('transfection-method-input').value.trim();
         const dosage = parseInt(document.getElementById('dosage-input').value.trim(), 10);
 
+	const chemValidation = validateChemistryLength(backbone, sugar);
+	if (!chemValidation.valid) {
+    	    showError(chemValidation.message, 'aso');
+    	    setLoadingState(false, 'aso');
+    	    return;
+	}
+	
         let requestBody = {
             geneName,
             transcriptId: selectedTranscript.id,
