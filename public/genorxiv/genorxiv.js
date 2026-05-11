@@ -325,7 +325,7 @@ class GenomeBrowser {
             };
         }
         
-        const response = await fetch(`https://www.barneyhill.com/assets/genova/fh/${input}_mygene_info.json`);
+        const response = await fetch(`/data/fh/${input}_mygene_info.json`);
         const geneInfo = await response.json();
         const pos = geneInfo.genomic_pos;
         const midpoint = Math.floor((pos.start + pos.end) / 2);
@@ -354,7 +354,7 @@ class GenomeBrowser {
             // First get all the data we need
             const { chrom, pos } = await this.parseSearchInput(input);
             
-            const data = await fetch(`https://www.barneyhill.com/assets/genova/genes/gencode.v47.annotation.${chrom}.genes.json`)
+            const data = await fetch(`/data/genes/gencode.v47.annotation.${chrom}.genes.json`)
                 .then(response => response.json());
 
             const features = data.map(feature => ({
